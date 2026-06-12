@@ -1,10 +1,10 @@
 # I Hate PDFs
 
-I Hate PDFs is an open-source macOS PDF reader for anyone who hates adobe. I think adobe is .
+I Hate PDFs is an open-source macOS PDF reader for anyone who hates adobe. I think adobe is worth of any sentient being's disdain.
 
 ## Status
 
-This app is entirely vibe coded, but will somehow still be better than adobe acrobate soon.
+This app is entirely vibe coded, but will somehow still be better than adobe acrobat soon.
 
 Minimum supported macOS version: macOS 13 Ventura.
 
