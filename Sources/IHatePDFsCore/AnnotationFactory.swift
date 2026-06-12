@@ -206,8 +206,8 @@ public enum AnnotationFactory {
             ?? UUID().uuidString
         _ = annotation.setValue(parentIdentifier, forAnnotationKey: AnnotationKeys.inReplyTo)
         _ = annotation.setValue("R", forAnnotationKey: AnnotationKeys.replyType)
-        let popup = makePopupIfNeeded(for: annotation, on: page, open: false)
-        return AnnotationInsertion(page: page, annotation: annotation, popup: popup)
+        hideReplyMarker(annotation, on: page)
+        return AnnotationInsertion(page: page, annotation: annotation, popup: nil)
     }
 
     public static func updateComment(
@@ -238,6 +238,11 @@ public enum AnnotationFactory {
                 page.removeAnnotation(popup)
                 annotation.popup = nil
             }
+            return nil
+        }
+
+        if AnnotationKeys.isReply(annotation) {
+            hideReplyMarker(annotation, on: page)
             return nil
         }
 
@@ -307,6 +312,25 @@ public enum AnnotationFactory {
         popup.shouldPrint = true
         annotation.popup = popup
         return popup
+    }
+
+    public static func hideReplyMarker(_ annotation: PDFAnnotation, on page: PDFPage) {
+        guard AnnotationKeys.isReply(annotation) else { return }
+
+        let pageBounds = page.bounds(for: .cropBox)
+        annotation.bounds = CGRect(
+            x: pageBounds.maxX + 32,
+            y: pageBounds.maxY + 32,
+            width: 1,
+            height: 1
+        )
+        annotation.shouldDisplay = true
+        annotation.shouldPrint = false
+
+        if let popup = annotation.popup {
+            page.removeAnnotation(popup)
+            annotation.popup = nil
+        }
     }
 
     public static func parentAnnotation(for annotation: PDFAnnotation) -> PDFAnnotation {

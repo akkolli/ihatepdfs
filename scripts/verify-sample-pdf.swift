@@ -91,11 +91,13 @@ reply.color = NSColor(calibratedRed: 0.52, green: 0.58, blue: 0.60, alpha: 0.88)
 standardize(
     reply,
     name: "verify-reply",
-    contents: "This reply is saved as a visible PDF text annotation.",
+    contents: "This reply is saved as PDF reply data without drawing an extra page icon.",
     author: "Reader"
 )
 _ = reply.setValue("verify-text-note", forAnnotationKey: PDFAnnotationKey(rawValue: "IRT"))
 _ = reply.setValue("R", forAnnotationKey: PDFAnnotationKey(rawValue: "RT"))
+reply.shouldDisplay = false
+reply.shouldPrint = false
 page.addAnnotation(reply)
 
 let freeText = PDFAnnotation(
@@ -128,7 +130,7 @@ precondition(annotations.contains { matches($0, .highlight) && $0.contents?.cont
 precondition(annotations.contains { matches($0, .highlight) && $0.contents?.contains("selected-text comment") == true })
 precondition(annotations.contains { matches($0, .underline) && $0.contents?.contains("underline") == true })
 precondition(annotations.contains { matches($0, .text) && $0.contents?.contains("text annotation") == true })
-precondition(annotations.contains { matches($0, .text) && $0.contents?.contains("reply") == true })
+precondition(annotations.contains { matches($0, .text) && $0.contents?.contains("reply") == true && !$0.shouldDisplay && !$0.shouldPrint })
 precondition(annotations.contains { matches($0, .freeText) && $0.contents?.contains("Free text") == true })
 
 print("Verified standard PDF annotations in \(outputURL.path)")

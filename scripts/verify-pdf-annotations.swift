@@ -98,13 +98,13 @@ for pageNumber in 1...document.numberOfPages {
             try requirePopup(in: annotation, page: pageNumber, index: annotationIndex, subtype: "Underline")
         case "Text":
             try requireTextKeys(in: annotation, page: pageNumber, index: annotationIndex)
-            try requirePopup(in: annotation, page: pageNumber, index: annotationIndex, subtype: "Text")
 
             if hasString(in: annotation, key: "IRT") || hasString(in: annotation, key: "RT") {
                 summary.replies += 1
                 try requireString(in: annotation, key: "IRT", page: pageNumber, index: annotationIndex)
                 try requireString(in: annotation, key: "RT", page: pageNumber, index: annotationIndex)
             } else {
+                try requirePopup(in: annotation, page: pageNumber, index: annotationIndex, subtype: "Text")
                 summary.textNotes += 1
             }
         case "FreeText":
@@ -145,7 +145,7 @@ guard summary.replies > 0 else {
 guard summary.freeText > 0 else {
     throw VerificationError.missingExpectedSubtype("FreeText")
 }
-guard summary.popups >= 5 else {
+guard summary.popups >= 4 else {
     throw VerificationError.missingExpectedSubtype("Popup")
 }
 

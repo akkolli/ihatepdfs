@@ -24,7 +24,7 @@ Use at least:
 8. Quit and reopen the same PDF at the same approximate window width and verify the app restores that PDF's sidebar state; then open a different PDF and verify it starts in focused single-pane reading unless that document has its own saved state.
 9. Add at least one reply and verify the comments sidebar presents the thread like a clean review/chat stream, with a visible connector line from the parent comment to the reply.
 10. Hover a comment row and verify the corresponding PDF text is highlighted; click both the parent comment text and the reply text in the sidebar and verify the PDF view navigates to and selects the corresponding annotation.
-11. Verify highlights, comment markers, reply icons, and selected sidebar rows use muted native-feeling colors in light mode and do not visually overpower the document.
+11. Verify highlights, comment markers, hidden page-level replies, and selected sidebar rows use muted native-feeling colors in light mode and do not visually overpower the document.
 12. Switch the app to dark mode and verify the reading background, comments sidebar, editor popover, connector lines, selected rows, text fields, and annotation markers remain legible and restrained.
 13. Save As an annotated copy.
 14. Reopen the annotated copy in I Hate PDFs and verify the annotations and comments remain.
@@ -69,4 +69,4 @@ Capture current screenshots in `docs/screenshots` for:
 
 ## Known Version 1 Limitation
 
-PDFKit rejects object-valued `/IRT` reply relationships through its public API. Replies created in this app are saved as visible standard `/Text` annotations, while full cross-reader reply-thread presentation must be verified and improved with a lower-level PDF writer if needed.
+PDFKit rejects object-valued `/IRT` reply relationships through its public API. Replies created in this app are saved as standard `/Text` annotations with string `/IRT` and `/RT` reply keys, but the reply annotation is hidden on the PDF page so it appears as a threaded sidebar reply instead of a second page icon. Full cross-reader reply-thread presentation must be verified and improved with a lower-level PDF writer if needed.

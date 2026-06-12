@@ -211,6 +211,7 @@ It should:
 - Let users change review state directly from a compact Reviewed/Not reviewed chip in each comment row.
 - Include search and filters, but hide advanced filters behind a compact filter menu or disclosure control.
 - Keep replies visually subordinate to their parent comment.
+- Replies should appear in the comments sidebar thread and should not create additional visible page icons on the PDF.
 - Draw subtle vertical connector lines that make reply threads visually clear, like a clean comments/chat section.
 - Navigate to and select the associated PDF annotation when a parent comment or reply is clicked.
 - Temporarily highlight the referenced PDF text when a comment row or reply row is hovered.

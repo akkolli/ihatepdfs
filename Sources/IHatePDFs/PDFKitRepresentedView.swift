@@ -22,6 +22,7 @@ final class AcademicPDFView: PDFView {
         let point = convert(event.locationInWindow, from: nil)
 
         if let page = page(for: point, nearest: false) {
+            closeNativePopups(on: page)
             let pagePoint = convert(point, to: page)
 
             if placementTool != nil {
@@ -38,6 +39,14 @@ final class AcademicPDFView: PDFView {
 
         super.mouseDown(with: event)
         window?.makeFirstResponder(self)
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  let page = self.page(for: point, nearest: false)
+            else {
+                return
+            }
+            self.closeNativePopups(on: page)
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -116,12 +125,12 @@ final class AcademicPDFView: PDFView {
 
     private func editableAnnotation(on page: PDFPage, at point: CGPoint) -> PDFAnnotation? {
         if let direct = page.annotation(at: point),
-           let editable = editableParent(for: direct) {
+           let editable = editableParent(for: direct, on: page) {
             return editable
         }
 
         for annotation in page.annotations.reversed() {
-            guard let editable = editableParent(for: annotation) else { continue }
+            guard let editable = editableParent(for: annotation, on: page) else { continue }
 
             if annotation.bounds.insetBy(dx: -8, dy: -8).contains(point) {
                 return editable
@@ -141,9 +150,25 @@ final class AcademicPDFView: PDFView {
         return nil
     }
 
-    private func editableParent(for annotation: PDFAnnotation) -> PDFAnnotation? {
+    private func editableParent(for annotation: PDFAnnotation, on page: PDFPage) -> PDFAnnotation? {
+        if let owner = popupOwner(for: annotation, on: page) {
+            return isEditableAcademicAnnotation(owner) ? owner : nil
+        }
+
         let parent = AnnotationFactory.parentAnnotation(for: annotation)
         return isEditableAcademicAnnotation(parent) ? parent : nil
+    }
+
+    private func popupOwner(for annotation: PDFAnnotation, on page: PDFPage) -> PDFAnnotation? {
+        guard AnnotationKeys.annotation(annotation, hasSubtype: .popup) else { return nil }
+
+        if let parent = annotation.value(forAnnotationKey: .parent) as? PDFAnnotation {
+            return parent
+        }
+
+        return page.annotations.first { candidate in
+            candidate.popup === annotation
+        }
     }
 
     private func isTextMarkup(_ annotation: PDFAnnotation) -> Bool {
@@ -166,7 +191,6 @@ final class AcademicPDFView: PDFView {
             || AnnotationKeys.annotation(annotation, hasSubtype: .underline)
             || AnnotationKeys.annotation(annotation, hasSubtype: .text)
             || AnnotationKeys.annotation(annotation, hasSubtype: .freeText)
-            || AnnotationKeys.annotation(annotation, hasSubtype: .popup)
     }
 }
 

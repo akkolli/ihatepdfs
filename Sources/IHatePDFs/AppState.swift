@@ -559,6 +559,7 @@ final class AppState: NSObject, ObservableObject {
             annotations = []
             return
         }
+        hideReplyMarkers(in: document)
         annotations = AnnotationReader.snapshots(in: document)
     }
 
@@ -852,6 +853,22 @@ final class AppState: NSObject, ObservableObject {
         let selection = searchResults[index]
         pdfView.setCurrentSelection(selection, animate: true)
         pdfView.go(to: selection)
+    }
+
+    private func hideReplyMarkers(in document: PDFDocument) {
+        var changedPages = Set<PDFPage>()
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for annotation in page.annotations where AnnotationKeys.isReply(annotation) {
+                AnnotationFactory.hideReplyMarker(annotation, on: page)
+                changedPages.insert(page)
+            }
+        }
+
+        for page in changedPages {
+            pdfView?.annotationsChanged(on: page)
+        }
     }
 
     private func navigate(to page: PDFPage, pageIndex: Int) {

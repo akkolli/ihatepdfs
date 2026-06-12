@@ -220,7 +220,7 @@ final class AnnotationFactoryTests: XCTestCase {
         XCTAssertTrue(insertion.popup.map { AnnotationKeys.annotation($0, hasSubtype: .popup) } ?? false)
     }
 
-    func testReplyStoresVisibleTextAnnotationWithBestEffortParentID() throws {
+    func testReplyStoresHiddenTextAnnotationWithBestEffortParentID() throws {
         let page = PDFPage()
         let parent = AnnotationFactory.noteInsertion(
             on: page,
@@ -239,6 +239,42 @@ final class AnnotationFactoryTests: XCTestCase {
         XCTAssertTrue(AnnotationKeys.annotation(reply.annotation, hasSubtype: .text))
         XCTAssertEqual(reply.annotation.value(forAnnotationKey: AnnotationKeys.inReplyTo) as? String, "parent-id")
         XCTAssertEqual(reply.annotation.value(forAnnotationKey: AnnotationKeys.replyType) as? String, "R")
+        XCTAssertTrue(reply.annotation.shouldDisplay)
+        XCTAssertFalse(reply.annotation.shouldPrint)
+        XCTAssertGreaterThan(reply.annotation.bounds.minX, page.bounds(for: .cropBox).maxX)
+        XCTAssertGreaterThan(reply.annotation.bounds.minY, page.bounds(for: .cropBox).maxY)
+        XCTAssertNil(reply.popup)
+    }
+
+    func testStringReplyParentIDResolvesToParentStableID() throws {
+        let document = PDFDocument()
+        let page = PDFPage()
+        document.insert(page, at: 0)
+
+        let parent = AnnotationFactory.noteInsertion(
+            on: page,
+            near: CGPoint(x: 100, y: 100),
+            comment: "Parent",
+            author: "Professor"
+        ).annotation
+        page.addAnnotation(parent)
+
+        let parentID = try XCTUnwrap(parent.value(forAnnotationKey: .name) as? String)
+        let reply = AnnotationFactory.replyInsertion(
+            to: parent,
+            on: page,
+            comment: "Reply",
+            author: "Reader",
+            parentID: parentID
+        ).annotation
+        page.addAnnotation(reply)
+
+        let snapshots = AnnotationReader.snapshots(in: document)
+        let parentSnapshot = try XCTUnwrap(snapshots.first { $0.contents == "Parent" })
+        let replySnapshot = try XCTUnwrap(snapshots.first { $0.contents == "Reply" })
+
+        XCTAssertEqual(replySnapshot.kind, .reply)
+        XCTAssertEqual(replySnapshot.parentID, parentSnapshot.id)
     }
 
     func testFreeTextCreatesStandardFreeTextAnnotation() throws {

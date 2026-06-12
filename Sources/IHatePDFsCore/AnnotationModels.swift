@@ -180,7 +180,7 @@ public enum AnnotationKeys {
     ) -> String? {
         if let parentID = annotation.value(forAnnotationKey: inReplyTo) as? String,
            !parentID.isEmpty {
-            return parentID
+            return stableIDForAnnotation(named: parentID, in: document) ?? parentID
         }
 
         guard let parent = annotation.value(forAnnotationKey: inReplyTo) as? PDFAnnotation else {
@@ -197,6 +197,20 @@ public enum AnnotationKeys {
         let pageIndex = document.index(for: page)
         let annotationIndex = page.annotations.firstIndex(where: { $0 === parent }) ?? 0
         return stableID(for: parent, pageIndex: pageIndex, annotationIndex: annotationIndex)
+    }
+
+    private static func stableIDForAnnotation(named name: String, in document: PDFDocument?) -> String? {
+        guard let document else { return nil }
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for (annotationIndex, candidate) in page.annotations.enumerated() {
+                guard candidate.value(forAnnotationKey: .name) as? String == name else { continue }
+                return stableID(for: candidate, pageIndex: pageIndex, annotationIndex: annotationIndex)
+            }
+        }
+
+        return nil
     }
 
     public static func isReply(_ annotation: PDFAnnotation) -> Bool {
