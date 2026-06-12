@@ -10,6 +10,16 @@ Minimum supported macOS version: macOS 13 Ventura.
 
 Supported Mac architectures: Apple Silicon and Intel, subject to the local Swift/Xcode toolchain used to build.
 
+## Latest Release
+
+Download the v0.1 macOS DMG from the GitHub release page:
+
+<https://github.com/akkolli/ihatepdfs/releases/tag/v0.1>
+
+Use `IHatePDFs-v0.1-macos.dmg` for normal app installation. Open the DMG, then drag `I Hate PDFs.app` into `/Applications`.
+
+Signing status for v0.1: the DMG is ad-hoc signed, but it is not Developer ID signed or Apple-notarized yet. macOS Gatekeeper may require opening the app from Finder with Control-click, then Open, on first launch.
+
 ## Features
 
 - Open local `.pdf` files from disk.
@@ -76,7 +86,9 @@ The packaged app is written to `dist/I Hate PDFs.app`; the disk image is written
 
 ## Installation
 
-Download `IHatePDFs.dmg`, open it, and move `I Hate PDFs.app` into `/Applications`. For local development builds that are not notarized, macOS may require opening the app from Finder with Control-click, Open the first time.
+Download `IHatePDFs-v0.1-macos.dmg` from the latest GitHub release, open it, and move `I Hate PDFs.app` into `/Applications`.
+
+For v0.1 and local development builds, the app is not Developer ID signed or notarized. If macOS blocks first launch, open Finder, Control-click `I Hate PDFs.app`, choose Open, then confirm.
 
 ## Development
 
