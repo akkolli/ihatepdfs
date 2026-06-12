@@ -29,6 +29,11 @@ Supported Mac architectures: Apple Silicon and Intel, subject to the local Swift
 - Review annotations in a compact list with page number, type, author, date, and first comment line.
 - Use an Acrobat-style comments sidebar with total count, page grouping, collapsible groups, an add-comment affordance, comment search, collapsed type/author/status filters, full text, replies, edit/delete, and click-to-navigate.
 
+### Download Releases
+
+https://github.com/akkolli/ihatepdfs/releases/tag/v0.1
+
+
 ## Build From Source
 
 Requirements:
