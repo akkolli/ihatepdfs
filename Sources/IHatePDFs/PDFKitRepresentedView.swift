@@ -15,13 +15,15 @@ final class AcademicPDFView: PDFView {
             window?.invalidateCursorRects(for: self)
         }
     }
+    private var handledAnnotationMouseDown = false
 
     override var acceptsFirstResponder: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        handledAnnotationMouseDown = false
         let point = convert(event.locationInWindow, from: nil)
 
-        if let page = page(for: point, nearest: false) {
+        if let page = page(for: point, nearest: false) ?? page(for: point, nearest: true) {
             closeNativePopups(on: page)
             let pagePoint = convert(point, to: page)
 
@@ -31,6 +33,7 @@ final class AcademicPDFView: PDFView {
             }
 
             if let annotation = editableAnnotation(on: page, at: pagePoint) {
+                handledAnnotationMouseDown = true
                 closeNativePopups(on: page)
                 onAnnotationClick?(annotation, page)
                 return
@@ -46,6 +49,34 @@ final class AcademicPDFView: PDFView {
                 return
             }
             self.closeNativePopups(on: page)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if handledAnnotationMouseDown {
+            handledAnnotationMouseDown = false
+            return
+        }
+
+        let point = convert(event.locationInWindow, from: nil)
+        let page = page(for: point, nearest: false) ?? page(for: point, nearest: true)
+        let pagePoint = page.map { convert(point, to: $0) }
+
+        super.mouseUp(with: event)
+
+        guard let page else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+
+            let clickedAnnotation = pagePoint.flatMap {
+                self.editableAnnotation(on: page, at: $0)
+            }
+            let target = clickedAnnotation ?? self.openNativePopupOwner(on: page)
+
+            self.closeNativePopups(on: page)
+            if let target {
+                self.onAnnotationClick?(target, page)
+            }
         }
     }
 
@@ -142,7 +173,7 @@ final class AcademicPDFView: PDFView {
             }
 
             if isTextMarkup(editable),
-               editable.bounds.insetBy(dx: -24, dy: -24).contains(point) {
+               textMarkupInteractionBounds(for: editable, on: page).contains(point) {
                 return editable
             }
         }
@@ -171,9 +202,44 @@ final class AcademicPDFView: PDFView {
         }
     }
 
+    private func openNativePopupOwner(on page: PDFPage) -> PDFAnnotation? {
+        for annotation in page.annotations.reversed() {
+            if annotation.popup?.isOpen == true,
+               isEditableAcademicAnnotation(annotation) {
+                return annotation
+            }
+
+            guard AnnotationKeys.annotation(annotation, hasSubtype: .popup),
+                  annotation.isOpen,
+                  let owner = popupOwner(for: annotation, on: page),
+                  isEditableAcademicAnnotation(owner)
+            else {
+                continue
+            }
+
+            return owner
+        }
+
+        return nil
+    }
+
     private func isTextMarkup(_ annotation: PDFAnnotation) -> Bool {
         AnnotationKeys.annotation(annotation, hasSubtype: .highlight)
             || AnnotationKeys.annotation(annotation, hasSubtype: .underline)
+    }
+
+    private func textMarkupInteractionBounds(
+        for annotation: PDFAnnotation,
+        on page: PDFPage
+    ) -> CGRect {
+        var bounds = annotation.bounds.insetBy(dx: -48, dy: -48)
+
+        if let popup = annotation.popup {
+            bounds = bounds.union(popup.bounds.insetBy(dx: -16, dy: -16))
+        }
+
+        let pageBounds = page.bounds(for: displayBox).insetBy(dx: -64, dy: -64)
+        return bounds.intersection(pageBounds)
     }
 
     private func closeNativePopups(on page: PDFPage) {

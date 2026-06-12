@@ -330,8 +330,13 @@ private struct CommentRow: View {
                 parentComment
 
                 ForEach(replies) { reply in
-                    ReplyRow(item: reply)
+                    ReplyRow(item: reply, threadRoot: item)
                         .id(reply.sidebarRenderID)
+                }
+
+                if appState.sidebarReplyParentID == item.id {
+                    SidebarReplyComposer(threadRoot: item)
+                        .id("reply-composer-\(item.id)")
                 }
             }
         }
@@ -371,7 +376,7 @@ private struct CommentRow: View {
                         appState.edit(item)
                     }
                     Button("Reply") {
-                        appState.addReply(to: item)
+                        appState.beginSidebarReply(to: item, inThread: item)
                     }
                     Button("Delete", role: .destructive) {
                         appState.delete(item)
@@ -405,10 +410,17 @@ private struct CommentRow: View {
                     .lineLimit(1)
             }
 
-            Text(item.contents.isEmpty ? "No text" : item.contents)
-                .font(.callout)
-                .foregroundStyle(item.contents.isEmpty ? InterfacePalette.quietText(for: colorScheme) : InterfacePalette.primaryText(for: colorScheme))
-                .fixedSize(horizontal: false, vertical: true)
+            if item.hasComment {
+                Text(item.contents)
+                    .font(.callout)
+                    .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if replies.isEmpty {
+                Text("No comment text")
+                    .font(.callout)
+                    .foregroundStyle(InterfacePalette.quietText(for: colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -457,6 +469,111 @@ private struct CommentMarker: View {
         .frame(width: size, height: size)
         .background(.bar)
         .clipShape(Circle())
+    }
+}
+
+private struct SidebarReplyComposer: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var isFocused: Bool
+    let threadRoot: AnnotationSnapshot
+
+    private let editorHorizontalInset: CGFloat = 7
+    private let editorVerticalInset: CGFloat = 6
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            CommentMarker(symbolName: "arrowshape.turn.up.left", size: 22, font: .caption2)
+                .frame(width: 28, alignment: .center)
+                .padding(.top, 9)
+                .help("Reply")
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("Reply")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+
+                    if let target = appState.sidebarReplyTarget {
+                        Text("to \(target.author)")
+                            .font(.caption2)
+                            .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                            .lineLimit(1)
+                    } else {
+                        Text("to \(threadRoot.author)")
+                            .font(.caption2)
+                            .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+                }
+
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $appState.sidebarReplyDraft)
+                        .font(.callout)
+                        .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                        .scrollContentBackground(.hidden)
+                        .focused($isFocused)
+                        .padding(.horizontal, editorHorizontalInset)
+                        .padding(.vertical, editorVerticalInset)
+
+                    if appState.sidebarReplyDraft.isEmpty {
+                        Text("Write a reply")
+                            .font(.callout)
+                            .foregroundStyle(InterfacePalette.quietText(for: colorScheme))
+                            .padding(.leading, editorHorizontalInset + 6)
+                            .padding(.top, editorVerticalInset)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(minHeight: 76)
+                .background(InterfacePalette.fieldFill(for: colorScheme))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 1)
+                }
+
+                HStack(spacing: 8) {
+                    TextField("Author", text: $appState.sidebarReplyAuthor)
+                        .textFieldStyle(.plain)
+                        .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                        .padding(.horizontal, 7)
+                        .frame(height: 26)
+                        .background(InterfacePalette.fieldFill(for: colorScheme))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 1)
+                        }
+
+                    Spacer()
+
+                    Button("Cancel") {
+                        appState.cancelSidebarReply()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+
+                    Button {
+                        appState.commitSidebarReply()
+                    } label: {
+                        Label("Reply", systemImage: "arrowshape.turn.up.left")
+                    }
+                    .disabled(appState.sidebarReplyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .keyboardShortcut(.return, modifiers: [.command])
+                }
+                .font(.caption.weight(.medium))
+            }
+        }
+        .padding(.top, 9)
+        .padding(.bottom, 2)
+        .onAppear {
+            DispatchQueue.main.async {
+                isFocused = true
+            }
+        }
     }
 }
 
@@ -514,6 +631,7 @@ private struct ReplyRow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
     let item: AnnotationSnapshot
+    let threadRoot: AnnotationSnapshot
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -541,6 +659,9 @@ private struct ReplyRow: View {
                 HStack(spacing: 12) {
                     Button("Edit") {
                         appState.edit(item)
+                    }
+                    Button("Reply") {
+                        appState.beginSidebarReply(to: item, inThread: threadRoot)
                     }
                     Button("Delete", role: .destructive) {
                         appState.delete(item)

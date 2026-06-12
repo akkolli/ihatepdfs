@@ -206,7 +206,8 @@ public enum AnnotationFactory {
             ?? UUID().uuidString
         _ = annotation.setValue(parentIdentifier, forAnnotationKey: AnnotationKeys.inReplyTo)
         _ = annotation.setValue("R", forAnnotationKey: AnnotationKeys.replyType)
-        hideReplyMarker(annotation, on: page)
+        annotation.shouldDisplay = false
+        annotation.shouldPrint = false
         return AnnotationInsertion(page: page, annotation: annotation, popup: nil)
     }
 
@@ -217,6 +218,7 @@ public enum AnnotationFactory {
         author: String,
         date: Date = Date()
     ) -> PDFAnnotation? {
+        AnnotationKeys.setCommentText(text, for: annotation)
         annotation.contents = text
         annotation.userName = author
         annotation.modificationDate = date
@@ -263,6 +265,7 @@ public enum AnnotationFactory {
         author: String,
         date: Date
     ) {
+        AnnotationKeys.setCommentText(comment, for: annotation)
         annotation.contents = comment
         annotation.userName = author
         annotation.modificationDate = date
@@ -286,9 +289,8 @@ public enum AnnotationFactory {
     ) -> PDFAnnotation? {
         guard !AnnotationKeys.annotation(annotation, hasSubtype: .popup) else { return nil }
         guard !AnnotationKeys.annotation(annotation, hasSubtype: .freeText) else { return nil }
-        guard let contents = annotation.contents,
-              !contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
+        let contents = AnnotationKeys.commentText(for: annotation)
+        guard !contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
 
@@ -297,6 +299,7 @@ public enum AnnotationFactory {
             popup.userName = annotation.userName
             popup.modificationDate = annotation.modificationDate
             popup.isOpen = open
+            popup.bounds = popupRect(for: annotation.bounds, on: page)
             popup.shouldDisplay = true
             popup.shouldPrint = true
             return popup.page == nil ? popup : nil
@@ -314,23 +317,131 @@ public enum AnnotationFactory {
         return popup
     }
 
+    @discardableResult
+    public static func normalizePopupPlacement(
+        for annotation: PDFAnnotation,
+        on page: PDFPage
+    ) -> Bool {
+        guard let popup = annotation.popup else { return false }
+
+        let bounds = popupRect(for: annotation.bounds, on: page)
+        guard popup.bounds != bounds else { return false }
+        popup.bounds = bounds
+        return true
+    }
+
+    @discardableResult
+    public static func setPopupMarkerVisibility(
+        for annotation: PDFAnnotation,
+        on page: PDFPage,
+        isVisible: Bool
+    ) -> Bool {
+        guard let popup = annotation.popup else { return false }
+
+        let oldBounds = popup.bounds
+        let oldShouldDisplay = popup.shouldDisplay
+        let oldShouldPrint = popup.shouldPrint
+        let oldIsOpen = popup.isOpen
+
+        popup.bounds = popupRect(for: annotation.bounds, on: page)
+        popup.shouldDisplay = isVisible
+        popup.shouldPrint = isVisible
+        popup.isOpen = false
+
+        return oldBounds != popup.bounds
+            || oldShouldDisplay != popup.shouldDisplay
+            || oldShouldPrint != popup.shouldPrint
+            || oldIsOpen != popup.isOpen
+    }
+
+    @discardableResult
+    public static func restoreCommentTextForExport(_ annotation: PDFAnnotation) -> Bool {
+        let contents = AnnotationKeys.commentText(for: annotation)
+        let exportedContents = contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil
+            : contents
+        let oldContents = annotation.contents
+
+        annotation.contents = exportedContents
+        if !contents.isEmpty {
+            AnnotationKeys.setCommentText(contents, for: annotation)
+        }
+
+        return oldContents != annotation.contents
+    }
+
+    @discardableResult
+    public static func detachPopupForViewer(
+        from annotation: PDFAnnotation,
+        on page: PDFPage
+    ) -> Bool {
+        let contents = AnnotationKeys.commentText(for: annotation)
+        let userName = annotation.userName
+        let modificationDate = annotation.modificationDate
+        let creationDate = annotation.value(forAnnotationKey: AnnotationKeys.creationDate)
+        let textLabel = annotation.value(forAnnotationKey: .textLabel)
+        let date = annotation.value(forAnnotationKey: .date)
+        let shouldSuppressNativeContents = !AnnotationKeys.isReply(annotation)
+            && !AnnotationKeys.annotation(annotation, hasSubtype: .freeText)
+        let oldContents = annotation.contents
+        var didChange = false
+
+        if !contents.isEmpty || annotation.value(forAnnotationKey: AnnotationKeys.appCommentText) == nil {
+            AnnotationKeys.setCommentText(contents, for: annotation)
+        }
+
+        if let popup = annotation.popup {
+            popup.isOpen = false
+            popup.shouldDisplay = false
+            popup.shouldPrint = false
+            if popup.page != nil {
+                page.removeAnnotation(popup)
+            }
+            annotation.popup = nil
+            didChange = true
+        }
+
+        annotation.contents = shouldSuppressNativeContents ? nil : contents
+        annotation.userName = userName
+        annotation.modificationDate = modificationDate
+        if let creationDate {
+            _ = annotation.setValue(creationDate, forAnnotationKey: AnnotationKeys.creationDate)
+        }
+        if let textLabel {
+            _ = annotation.setValue(textLabel, forAnnotationKey: .textLabel)
+        }
+        if let date {
+            _ = annotation.setValue(date, forAnnotationKey: .date)
+        }
+
+        return didChange || oldContents != annotation.contents
+    }
+
     public static func hideReplyMarker(_ annotation: PDFAnnotation, on page: PDFPage) {
         guard AnnotationKeys.isReply(annotation) else { return }
 
-        let pageBounds = page.bounds(for: .cropBox)
-        annotation.bounds = CGRect(
-            x: pageBounds.maxX + 32,
-            y: pageBounds.maxY + 32,
-            width: 1,
-            height: 1
-        )
-        annotation.shouldDisplay = true
-        annotation.shouldPrint = false
+        let contents = AnnotationKeys.commentText(for: annotation)
+        let userName = annotation.userName
+        let modificationDate = annotation.modificationDate
 
         if let popup = annotation.popup {
             page.removeAnnotation(popup)
             annotation.popup = nil
         }
+
+        let pageBounds = page.bounds(for: .cropBox)
+        annotation.bounds = CGRect(
+            x: pageBounds.maxX + 32,
+            y: pageBounds.maxY + 32,
+            width: 24,
+            height: 24
+        )
+        annotation.shouldDisplay = false
+        annotation.shouldPrint = false
+        AnnotationKeys.setCommentText(contents, for: annotation)
+        annotation.contents = contents
+        annotation.userName = userName
+        annotation.modificationDate = modificationDate
     }
 
     public static func parentAnnotation(for annotation: PDFAnnotation) -> PDFAnnotation {
@@ -357,16 +468,18 @@ public enum AnnotationFactory {
 
     private static func popupRect(for annotationBounds: CGRect, on page: PDFPage) -> CGRect {
         let pageBounds = page.bounds(for: .cropBox)
-        let desired = CGRect(
-            x: annotationBounds.maxX + 10,
-            y: max(annotationBounds.minY - 96, pageBounds.minY + 12),
+        let indicatorInset: CGFloat = 28
+        let verticalInset: CGFloat = 12
+        let y = min(
+            max(annotationBounds.maxY - indicatorInset, pageBounds.minY + verticalInset),
+            pageBounds.maxY - indicatorInset - verticalInset
+        )
+
+        return CGRect(
+            x: pageBounds.maxX - indicatorInset,
+            y: y,
             width: 240,
             height: 120
-        )
-        return clampedRect(
-            desired: desired,
-            on: page,
-            fallbackSize: CGSize(width: 240, height: 120)
         )
     }
 

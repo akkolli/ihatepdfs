@@ -110,6 +110,101 @@ final class AnnotationFactoryTests: XCTestCase {
         })
     }
 
+    func testPopupMarkerIsPlacedInRightPageMargin() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .comment,
+                comment: "Margin marker.",
+                author: "Professor"
+            ).first
+        )
+        let popup = try XCTUnwrap(insertion.popup)
+        let pageBounds = page.bounds(for: .cropBox)
+
+        XCTAssertEqual(popup.bounds.minX, pageBounds.maxX - 28, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(popup.bounds.minY, pageBounds.minY + 12)
+        XCTAssertLessThanOrEqual(popup.bounds.minY, pageBounds.maxY - 40)
+
+        popup.bounds = insertion.annotation.bounds.offsetBy(dx: 10, dy: 0)
+        XCTAssertTrue(AnnotationFactory.normalizePopupPlacement(for: insertion.annotation, on: page))
+        XCTAssertEqual(popup.bounds.minX, pageBounds.maxX - 28, accuracy: 0.01)
+    }
+
+    func testDetachingPopupForViewerKeepsSidebarCommentText() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .comment,
+                comment: "",
+                author: "Professor"
+            ).first
+        )
+
+        page.addAnnotation(insertion.annotation)
+        let popup = try XCTUnwrap(AnnotationFactory.updateComment(
+            for: insertion.annotation,
+            on: page,
+            text: "Visible comment text.",
+            author: "Professor"
+        ))
+        page.addAnnotation(popup)
+
+        XCTAssertTrue(AnnotationFactory.detachPopupForViewer(from: insertion.annotation, on: page))
+        XCTAssertNil(insertion.annotation.popup)
+        XCTAssertNil(insertion.annotation.contents)
+        XCTAssertEqual(AnnotationKeys.commentText(for: insertion.annotation), "Visible comment text.")
+        XCTAssertFalse(page.annotations.contains { AnnotationKeys.annotation($0, hasSubtype: .popup) })
+
+        let snapshot = try XCTUnwrap(AnnotationReader.snapshots(in: document).first {
+            $0.annotation === insertion.annotation
+        })
+        XCTAssertEqual(snapshot.contents, "Visible comment text.")
+    }
+
+    func testRestoreCommentTextForExportWritesStandardPDFContents() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .comment,
+                comment: "Exported comment text.",
+                author: "Professor"
+            ).first
+        )
+
+        page.addAnnotation(insertion.annotation)
+        if let popup = insertion.popup {
+            page.addAnnotation(popup)
+        }
+        AnnotationFactory.detachPopupForViewer(from: insertion.annotation, on: page)
+
+        XCTAssertNil(insertion.annotation.contents)
+        XCTAssertTrue(AnnotationFactory.restoreCommentTextForExport(insertion.annotation))
+        let popup = try XCTUnwrap(AnnotationFactory.makePopupIfNeeded(
+            for: insertion.annotation,
+            on: page,
+            open: false
+        ))
+        if popup.page == nil {
+            page.addAnnotation(popup)
+        }
+
+        let reopenedPage = try saveAndReopen(document).page(at: 0).unwrap()
+        XCTAssertTrue(reopenedPage.annotations.contains {
+            AnnotationKeys.annotation($0, hasSubtype: .highlight)
+                && $0.contents == "Exported comment text."
+        })
+    }
+
     func testAddingAnnotationPreservesPriorAnnotation() throws {
         let document = try makeSelectableTextDocument()
         let page = try XCTUnwrap(document.page(at: 0))
@@ -239,8 +334,14 @@ final class AnnotationFactoryTests: XCTestCase {
         XCTAssertTrue(AnnotationKeys.annotation(reply.annotation, hasSubtype: .text))
         XCTAssertEqual(reply.annotation.value(forAnnotationKey: AnnotationKeys.inReplyTo) as? String, "parent-id")
         XCTAssertEqual(reply.annotation.value(forAnnotationKey: AnnotationKeys.replyType) as? String, "R")
-        XCTAssertTrue(reply.annotation.shouldDisplay)
+        XCTAssertFalse(reply.annotation.shouldDisplay)
         XCTAssertFalse(reply.annotation.shouldPrint)
+
+        page.addAnnotation(reply.annotation)
+        AnnotationFactory.hideReplyMarker(reply.annotation, on: page)
+        XCTAssertFalse(reply.annotation.shouldDisplay)
+        XCTAssertFalse(reply.annotation.shouldPrint)
+        XCTAssertEqual(AnnotationKeys.commentText(for: reply.annotation), "Reply")
         XCTAssertGreaterThan(reply.annotation.bounds.minX, page.bounds(for: .cropBox).maxX)
         XCTAssertGreaterThan(reply.annotation.bounds.minY, page.bounds(for: .cropBox).maxY)
         XCTAssertNil(reply.popup)
@@ -268,6 +369,7 @@ final class AnnotationFactoryTests: XCTestCase {
             parentID: parentID
         ).annotation
         page.addAnnotation(reply)
+        AnnotationFactory.hideReplyMarker(reply, on: page)
 
         let snapshots = AnnotationReader.snapshots(in: document)
         let parentSnapshot = try XCTUnwrap(snapshots.first { $0.contents == "Parent" })

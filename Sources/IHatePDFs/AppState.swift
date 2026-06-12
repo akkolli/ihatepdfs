@@ -125,6 +125,10 @@ final class AppState: NSObject, ObservableObject {
     @Published var selectedAuthorFilter = "All Authors"
     @Published var selectedStatusFilter = ReviewState.allStatuses
     @Published var collapsedPageIndexes: Set<Int> = []
+    @Published var sidebarReplyParentID: String?
+    @Published var sidebarReplyTargetID: String?
+    @Published var sidebarReplyDraft = ""
+    @Published var sidebarReplyAuthor = AnnotationFactory.defaultAuthor
     @Published var statusMessage = "Open a PDF to begin."
 
     private var pageObserver: NSObjectProtocol?
@@ -196,7 +200,15 @@ final class AppState: NSObject, ObservableObject {
     }
 
     var repliesByParent: [String: [AnnotationSnapshot]] {
-        Dictionary(grouping: filteredAnnotations.filter(\.isReply), by: \.parentID!)
+        Dictionary(
+            grouping: filteredAnnotations.filter { $0.isReply && $0.hasComment },
+            by: \.parentID!
+        )
+    }
+
+    var sidebarReplyTarget: AnnotationSnapshot? {
+        guard let sidebarReplyTargetID else { return nil }
+        return annotations.first { $0.id == sidebarReplyTargetID }
     }
 
     func attachPDFView(_ view: PDFView) {
@@ -266,6 +278,7 @@ final class AppState: NSObject, ObservableObject {
         selectedAnnotationID = nil
         activeEditor = nil
         placementTool = nil
+        clearSidebarReplyDraft()
         refreshAnnotations()
         statusMessage = "Opened \(url.lastPathComponent)."
     }
@@ -278,6 +291,7 @@ final class AppState: NSObject, ObservableObject {
         selectedAnnotationID = nil
         activeEditor = nil
         placementTool = nil
+        clearSidebarReplyDraft()
         searchResults = []
         searchText = ""
         showToolbarSearch = false
@@ -338,7 +352,9 @@ final class AppState: NSObject, ObservableObject {
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
+            preparePopupMarkersForExport(in: document)
             guard document.write(to: url) else {
+                hidePopupMarkersInViewer(in: document)
                 showAlert(title: "Save Failed", message: "The PDF could not be written to \(url.path).")
                 return
             }
@@ -405,21 +421,85 @@ final class AppState: NSObject, ObservableObject {
     }
 
     func addReply(to item: AnnotationSnapshot) {
+        beginSidebarReply(to: item)
+    }
+
+    func beginSidebarReply(
+        to target: AnnotationSnapshot,
+        inThread threadRoot: AnnotationSnapshot? = nil
+    ) {
+        guard let root = threadRoot ?? rootComment(for: target) else {
+            statusMessage = "Original comment no longer exists."
+            return
+        }
+
+        activeEditor = nil
+        showCommentsSidebar = true
+        sidebarReplyParentID = root.id
+        sidebarReplyTargetID = target.id
+        sidebarReplyDraft = ""
+        sidebarReplyAuthor = AnnotationFactory.defaultAuthor
+        selectedAnnotationID = target.id
+        statusMessage = "Replying to \(target.author)."
+    }
+
+    func cancelSidebarReply() {
+        clearSidebarReplyDraft()
+        statusMessage = "Reply canceled."
+    }
+
+    func commitSidebarReply() {
+        let trimmedText = sidebarReplyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            statusMessage = "Type a reply before saving."
+            return
+        }
+
+        guard let sidebarReplyParentID,
+              let parent = annotations.first(where: { $0.id == sidebarReplyParentID })
+        else {
+            clearSidebarReplyDraft()
+            statusMessage = "Original comment no longer exists."
+            return
+        }
+
+        let author = sidebarReplyAuthor.trimmingCharacters(in: .whitespacesAndNewlines)
         let insertion = AnnotationFactory.replyInsertion(
-            to: item.annotation,
-            on: item.page,
-            comment: "",
-            author: AnnotationFactory.defaultAuthor,
-            parentID: item.id
+            to: parent.annotation,
+            on: parent.page,
+            comment: trimmedText,
+            author: author.isEmpty ? AnnotationFactory.defaultAuthor : author,
+            parentID: parent.id
         )
         add(insertion)
+        clearSidebarReplyDraft()
         refreshAnnotations()
-        openEditor(
-            title: "Reply",
-            annotations: [insertion.annotation],
-            pages: [item.page],
-            isNew: true
-        )
+
+        if let reply = annotations.first(where: { $0.annotation === insertion.annotation }) {
+            selectedAnnotationID = reply.id
+        }
+        statusMessage = "Reply added."
+    }
+
+    func replyFromEditor(
+        _ context: AnnotationEditorContext,
+        text: String,
+        author: String
+    ) {
+        updateAnnotations(in: context, text: text, author: author)
+        refreshAnnotations()
+
+        guard let annotation = context.primaryAnnotation,
+              let item = snapshot(for: annotation)
+        else {
+            activeEditor = nil
+            showCommentsSidebar = true
+            statusMessage = "Comment saved."
+            return
+        }
+
+        activeEditor = nil
+        beginSidebarReply(to: item)
     }
 
     func edit(_ item: AnnotationSnapshot) {
@@ -446,6 +526,10 @@ final class AppState: NSObject, ObservableObject {
         }
         if hoveredAnnotationID.map(targetIDs.contains) == true {
             hoveredAnnotationID = nil
+        }
+        if sidebarReplyParentID.map(targetIDs.contains) == true
+            || sidebarReplyTargetID.map(targetIDs.contains) == true {
+            clearSidebarReplyDraft()
         }
 
         activeEditor = nil
@@ -557,10 +641,14 @@ final class AppState: NSObject, ObservableObject {
     func refreshAnnotations() {
         guard let document else {
             annotations = []
+            clearSidebarReplyDraft()
             return
         }
         hideReplyMarkers(in: document)
+        normalizePopupMarkers(in: document)
+        hidePopupMarkersInViewer(in: document)
         annotations = AnnotationReader.snapshots(in: document)
+        pruneSidebarReplyDraftIfNeeded()
     }
 
     func runSearch() {
@@ -727,9 +815,10 @@ final class AppState: NSObject, ObservableObject {
 
     private func add(_ insertion: AnnotationInsertion) {
         insertion.page.addAnnotation(insertion.annotation)
-        if let popup = insertion.popup {
-            insertion.page.addAnnotation(popup)
+        if AnnotationKeys.isReply(insertion.annotation) {
+            AnnotationFactory.hideReplyMarker(insertion.annotation, on: insertion.page)
         }
+        detachPopupMarkerFromViewer(for: insertion.annotation, on: insertion.page)
         pdfView?.annotationsChanged(on: insertion.page)
     }
 
@@ -744,15 +833,13 @@ final class AppState: NSObject, ObservableObject {
         for (index, annotation) in context.annotations.enumerated() {
             guard index < context.pages.count else { continue }
             let page = context.pages[index]
-            let popup = AnnotationFactory.updateComment(
+            _ = AnnotationFactory.updateComment(
                 for: annotation,
                 on: page,
                 text: text,
                 author: authorValue
             )
-            if let popup {
-                page.addAnnotation(popup)
-            }
+            detachPopupMarkerFromViewer(for: annotation, on: page)
             pdfView?.annotationsChanged(on: page)
         }
     }
@@ -788,7 +875,7 @@ final class AppState: NSObject, ObservableObject {
             pages: pages,
             isNewAnnotation: isNew,
             allowsDelete: true,
-            initialText: first?.contents ?? "",
+            initialText: first.map(AnnotationKeys.commentText(for:)) ?? "",
             initialAuthor: first?.userName ?? AnnotationFactory.defaultAuthor
         )
     }
@@ -802,6 +889,38 @@ final class AppState: NSObject, ObservableObject {
                 annotation.popup?.isOpen = false
             }
             pdfView?.annotationsChanged(on: page)
+        }
+    }
+
+    private func rootComment(for target: AnnotationSnapshot) -> AnnotationSnapshot? {
+        guard let parentID = target.parentID else { return target }
+        return annotations.first { $0.id == parentID }
+    }
+
+    private func snapshot(for annotation: PDFAnnotation) -> AnnotationSnapshot? {
+        annotations.first { $0.annotation === annotation }
+    }
+
+    private func clearSidebarReplyDraft() {
+        sidebarReplyParentID = nil
+        sidebarReplyTargetID = nil
+        sidebarReplyDraft = ""
+        sidebarReplyAuthor = AnnotationFactory.defaultAuthor
+    }
+
+    private func pruneSidebarReplyDraftIfNeeded() {
+        guard sidebarReplyParentID != nil || sidebarReplyTargetID != nil else { return }
+
+        let ids = Set(annotations.map(\.id))
+        guard let parentID = sidebarReplyParentID,
+              ids.contains(parentID)
+        else {
+            clearSidebarReplyDraft()
+            return
+        }
+
+        if sidebarReplyTargetID.map(ids.contains) != true {
+            sidebarReplyTargetID = parentID
         }
     }
 
@@ -821,7 +940,9 @@ final class AppState: NSObject, ObservableObject {
     }
 
     private func write(_ document: PDFDocument, to url: URL) {
+        preparePopupMarkersForExport(in: document)
         guard document.write(to: url) else {
+            hidePopupMarkersInViewer(in: document)
             showAlert(title: "Save Failed", message: "The PDF could not be written to \(url.path).")
             return
         }
@@ -869,6 +990,101 @@ final class AppState: NSObject, ObservableObject {
         for page in changedPages {
             pdfView?.annotationsChanged(on: page)
         }
+    }
+
+    private func normalizePopupMarkers(in document: PDFDocument) {
+        var changedPages = Set<PDFPage>()
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for annotation in page.annotations where !AnnotationKeys.annotation(annotation, hasSubtype: .popup) {
+                if AnnotationFactory.normalizePopupPlacement(for: annotation, on: page) {
+                    changedPages.insert(page)
+                }
+            }
+        }
+
+        for page in changedPages {
+            pdfView?.annotationsChanged(on: page)
+        }
+    }
+
+    private func preparePopupMarkersForExport(in document: PDFDocument) {
+        var changedPages = Set<PDFPage>()
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for annotation in page.annotations where !AnnotationKeys.annotation(annotation, hasSubtype: .popup) {
+                if AnnotationFactory.restoreCommentTextForExport(annotation) {
+                    changedPages.insert(page)
+                }
+
+                guard !AnnotationKeys.isReply(annotation),
+                      !AnnotationKeys.annotation(annotation, hasSubtype: .freeText)
+                else {
+                    continue
+                }
+
+                if let popup = AnnotationFactory.makePopupIfNeeded(
+                    for: annotation,
+                    on: page,
+                    open: false
+                ), popup.page == nil {
+                    page.addAnnotation(popup)
+                    changedPages.insert(page)
+                }
+
+                if AnnotationFactory.setPopupMarkerVisibility(
+                    for: annotation,
+                    on: page,
+                    isVisible: true
+                ) {
+                    changedPages.insert(page)
+                }
+            }
+        }
+
+        for page in changedPages {
+            pdfView?.annotationsChanged(on: page)
+        }
+    }
+
+    private func hidePopupMarkersInViewer(in document: PDFDocument) {
+        var changedPages = Set<PDFPage>()
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            var popupsToRemove: [PDFAnnotation] = []
+
+            for annotation in page.annotations {
+                if AnnotationKeys.annotation(annotation, hasSubtype: .popup) {
+                    annotation.isOpen = false
+                    annotation.shouldDisplay = false
+                    annotation.shouldPrint = false
+                    popupsToRemove.append(annotation)
+                    continue
+                }
+
+                if detachPopupMarkerFromViewer(for: annotation, on: page) {
+                    changedPages.insert(page)
+                }
+            }
+
+            guard !popupsToRemove.isEmpty else { continue }
+            for popup in popupsToRemove {
+                page.removeAnnotation(popup)
+            }
+            changedPages.insert(page)
+        }
+
+        for page in changedPages {
+            pdfView?.annotationsChanged(on: page)
+        }
+    }
+
+    @discardableResult
+    private func detachPopupMarkerFromViewer(for annotation: PDFAnnotation, on page: PDFPage) -> Bool {
+        AnnotationFactory.detachPopupForViewer(from: annotation, on: page)
     }
 
     private func navigate(to page: PDFPage, pageIndex: Int) {

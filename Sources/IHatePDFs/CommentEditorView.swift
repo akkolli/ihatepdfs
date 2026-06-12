@@ -34,6 +34,12 @@ final class CommentPopoverModel: ObservableObject {
         guard !didFinish else { return }
         appState?.updateEditorDraft(context, text: text, author: author)
     }
+
+    func reply() {
+        guard !didFinish else { return }
+        didFinish = true
+        appState?.replyFromEditor(context, text: text, author: author)
+    }
 }
 
 struct CommentEditorView: View {
@@ -130,8 +136,22 @@ struct CommentEditorView: View {
                         .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 1)
                 }
                 .frame(width: 190)
+                .layoutPriority(1)
 
             Spacer()
+
+            if !model.context.isNewAnnotation,
+               model.context.primaryAnnotation != nil {
+                Button {
+                    model.reply()
+                } label: {
+                    Label("Reply", systemImage: "arrowshape.turn.up.left")
+                }
+                .labelStyle(.iconOnly)
+                .frame(width: 34)
+                .help("Reply")
+                .accessibilityLabel("Reply")
+            }
 
             if model.context.allowsDelete {
                 Button(role: .destructive) {
@@ -140,6 +160,7 @@ struct CommentEditorView: View {
                     Label("Delete Annotation", systemImage: "trash")
                 }
                 .labelStyle(.iconOnly)
+                .frame(width: 34)
                 .help("Delete Annotation")
             }
         }

@@ -154,6 +154,19 @@ public enum AnnotationKeys {
     public static let stateModel = PDFAnnotationKey(rawValue: "StateModel")
     public static let appKind = PDFAnnotationKey(rawValue: "IHatePDFsKind")
     public static let appKindComment = "Comment"
+    public static let appCommentText = PDFAnnotationKey(rawValue: "IHatePDFsCommentText")
+
+    public static func commentText(for annotation: PDFAnnotation) -> String {
+        if let value = annotation.value(forAnnotationKey: appCommentText) as? String {
+            return value
+        }
+
+        return annotation.contents ?? ""
+    }
+
+    public static func setCommentText(_ text: String, for annotation: PDFAnnotation) {
+        _ = annotation.setValue(text, forAnnotationKey: appCommentText)
+    }
 
     public static func stableID(
         for annotation: PDFAnnotation,
@@ -282,7 +295,8 @@ public enum AnnotationReader {
                 guard !AnnotationKeys.annotation(annotation, hasSubtype: .popup) else { continue }
 
                 let kind = AcademicAnnotationKind(annotation: annotation)
-                guard kind != .other || annotation.contents?.isEmpty == false else { continue }
+                let contents = AnnotationKeys.commentText(for: annotation)
+                guard kind != .other || !contents.isEmpty else { continue }
 
                 let id = AnnotationKeys.stableID(
                     for: annotation,
@@ -310,7 +324,7 @@ public enum AnnotationReader {
                         createdAt: createdAt,
                         modifiedAt: annotation.modificationDate,
                         status: status,
-                        contents: annotation.contents ?? "",
+                        contents: contents,
                         bounds: annotation.bounds,
                         annotation: annotation,
                         page: page,
