@@ -1,0 +1,365 @@
+import AppKit
+import IHatePDFsCore
+import PDFKit
+import SwiftUI
+
+final class AcademicPDFView: PDFView {
+    var onAnnotationClick: ((PDFAnnotation, PDFPage) -> Void)?
+    var onPlacementClick: ((PDFPage, CGPoint) -> Void)?
+    var onSelectionComment: (() -> Void)?
+    var onPreviousPageKey: (() -> Void)?
+    var onNextPageKey: (() -> Void)?
+    var placementTool: AnnotationPlacementTool? {
+        didSet {
+            guard oldValue != placementTool else { return }
+            window?.invalidateCursorRects(for: self)
+        }
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+
+        if let page = page(for: point, nearest: false) {
+            let pagePoint = convert(point, to: page)
+
+            if placementTool != nil {
+                onPlacementClick?(page, pagePoint)
+                return
+            }
+
+            if let annotation = editableAnnotation(on: page, at: pagePoint) {
+                closeNativePopups(on: page)
+                onAnnotationClick?(annotation, page)
+                return
+            }
+        }
+
+        super.mouseDown(with: event)
+        window?.makeFirstResponder(self)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard hasCommentableSelection else {
+            super.rightMouseDown(with: event)
+            return
+        }
+
+        let menu = commentMenu(from: super.menu(for: event))
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let pageNavigationModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+        guard event.modifierFlags.intersection(pageNavigationModifiers).isEmpty else {
+            super.keyDown(with: event)
+            return
+        }
+
+        switch event.keyCode {
+        case 123, 126:
+            onPreviousPageKey?()
+        case 124, 125:
+            onNextPageKey?()
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+
+        if placementTool != nil {
+            addCursorRect(bounds, cursor: .crosshair)
+        }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        commentMenu(from: super.menu(for: event))
+    }
+
+    private var hasCommentableSelection: Bool {
+        guard let selection = currentSelection,
+              !selection.pages.isEmpty,
+              selection.string?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        else {
+            return false
+        }
+
+        return true
+    }
+
+    private func commentMenu(from baseMenu: NSMenu?) -> NSMenu {
+        let menu = baseMenu ?? NSMenu()
+        guard hasCommentableSelection else { return menu }
+        guard !menu.items.contains(where: { $0.action == #selector(commentOnSelectionFromMenu(_:)) }) else {
+            return menu
+        }
+
+        let item = NSMenuItem(
+            title: "Comment",
+            action: #selector(commentOnSelectionFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        menu.insertItem(item, at: 0)
+        if menu.items.count > 1 {
+            menu.insertItem(.separator(), at: 1)
+        }
+        return menu
+    }
+
+    @objc private func commentOnSelectionFromMenu(_ sender: Any?) {
+        onSelectionComment?()
+    }
+
+    private func editableAnnotation(on page: PDFPage, at point: CGPoint) -> PDFAnnotation? {
+        if let direct = page.annotation(at: point),
+           let editable = editableParent(for: direct) {
+            return editable
+        }
+
+        for annotation in page.annotations.reversed() {
+            guard let editable = editableParent(for: annotation) else { continue }
+
+            if annotation.bounds.insetBy(dx: -8, dy: -8).contains(point) {
+                return editable
+            }
+
+            if let popup = editable.popup,
+               popup.bounds.insetBy(dx: -10, dy: -10).contains(point) {
+                return editable
+            }
+
+            if isTextMarkup(editable),
+               editable.bounds.insetBy(dx: -24, dy: -24).contains(point) {
+                return editable
+            }
+        }
+
+        return nil
+    }
+
+    private func editableParent(for annotation: PDFAnnotation) -> PDFAnnotation? {
+        let parent = AnnotationFactory.parentAnnotation(for: annotation)
+        return isEditableAcademicAnnotation(parent) ? parent : nil
+    }
+
+    private func isTextMarkup(_ annotation: PDFAnnotation) -> Bool {
+        AnnotationKeys.annotation(annotation, hasSubtype: .highlight)
+            || AnnotationKeys.annotation(annotation, hasSubtype: .underline)
+    }
+
+    private func closeNativePopups(on page: PDFPage) {
+        for annotation in page.annotations {
+            if AnnotationKeys.annotation(annotation, hasSubtype: .popup) {
+                annotation.isOpen = false
+            }
+            annotation.popup?.isOpen = false
+        }
+        annotationsChanged(on: page)
+    }
+
+    private func isEditableAcademicAnnotation(_ annotation: PDFAnnotation) -> Bool {
+        AnnotationKeys.annotation(annotation, hasSubtype: .highlight)
+            || AnnotationKeys.annotation(annotation, hasSubtype: .underline)
+            || AnnotationKeys.annotation(annotation, hasSubtype: .text)
+            || AnnotationKeys.annotation(annotation, hasSubtype: .freeText)
+            || AnnotationKeys.annotation(annotation, hasSubtype: .popup)
+    }
+}
+
+struct PDFKitRepresentedView: NSViewRepresentable {
+    @EnvironmentObject private var appState: AppState
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> AcademicPDFView {
+        let view = AcademicPDFView()
+        view.onAnnotationClick = { annotation, page in
+            Task { @MainActor in
+                appState.openAnnotationFromPDF(annotation, page: page)
+            }
+        }
+        view.onPlacementClick = { page, point in
+            Task { @MainActor in
+                appState.placePendingAnnotation(on: page, near: point)
+            }
+        }
+        view.onSelectionComment = {
+            Task { @MainActor in
+                appState.addComment()
+            }
+        }
+        view.onPreviousPageKey = {
+            Task { @MainActor in
+                appState.goToPreviousPage()
+            }
+        }
+        view.onNextPageKey = {
+            Task { @MainActor in
+                appState.goToNextPage()
+            }
+        }
+        appState.attachPDFView(view)
+        return view
+    }
+
+    func updateNSView(_ view: AcademicPDFView, context: Context) {
+        if view.document !== appState.document {
+            view.document = appState.document
+        }
+        view.placementTool = appState.placementTool
+        view.highlightedSelections = appState.searchResults.isEmpty ? nil : appState.searchResults
+        context.coordinator.sync(editor: appState.activeEditor, in: view, appState: appState)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSPopoverDelegate {
+        private var popover: NSPopover?
+        private var model: CommentPopoverModel?
+        private var editorID: UUID?
+        private var isClosing = false
+        private weak var appState: AppState?
+
+        func sync(
+            editor context: AnnotationEditorContext?,
+            in view: AcademicPDFView,
+            appState: AppState
+        ) {
+            self.appState = appState
+
+            guard let context else {
+                if !isClosing {
+                    dismissCurrent(commit: false)
+                }
+                return
+            }
+
+            if editorID == context.id, popover?.isShown == true {
+                return
+            }
+
+            dismissCurrent(commit: true)
+            show(context, in: view, appState: appState)
+        }
+
+        private func show(
+            _ context: AnnotationEditorContext,
+            in view: AcademicPDFView,
+            appState: AppState
+        ) {
+            guard view.window != nil else { return }
+
+            let model = CommentPopoverModel(context: context, appState: appState)
+            let controller = NSHostingController(rootView: CommentEditorView(model: model))
+            let popover = NSPopover()
+            popover.behavior = .semitransient
+            popover.animates = true
+            popover.contentSize = NSSize(width: 340, height: 258)
+            popover.contentViewController = controller
+            popover.delegate = self
+
+            self.model = model
+            self.popover = popover
+            self.editorID = context.id
+            self.isClosing = false
+
+            let anchor = anchorRect(for: context, in: view)
+            popover.show(
+                relativeTo: anchor,
+                of: view,
+                preferredEdge: preferredEdge(for: anchor, in: view)
+            )
+        }
+
+        private func dismissCurrent(commit: Bool) {
+            guard let popover else {
+                cleanup()
+                return
+            }
+
+            if commit {
+                model?.commit()
+            }
+
+            if popover.isShown {
+                popover.performClose(nil)
+            } else {
+                cleanup()
+            }
+        }
+
+        func popoverWillClose(_ notification: Notification) {
+            isClosing = true
+            model?.commit()
+        }
+
+        func popoverDidClose(_ notification: Notification) {
+            let closedEditorID = editorID
+            let currentAppState = appState
+            cleanup()
+
+            if currentAppState?.activeEditor?.id == closedEditorID {
+                currentAppState?.activeEditor = nil
+            }
+        }
+
+        private func cleanup() {
+            popover?.delegate = nil
+            popover = nil
+            model = nil
+            editorID = nil
+            isClosing = false
+        }
+
+        private func anchorRect(for context: AnnotationEditorContext, in view: AcademicPDFView) -> NSRect {
+            guard let annotation = context.primaryAnnotation,
+                  let page = context.primaryPage ?? annotation.page
+            else {
+                return centeredAnchor(in: view)
+            }
+
+            let rect = view.convert(annotation.bounds, from: page).insetBy(dx: -4, dy: -4)
+            guard rect.width.isFinite,
+                  rect.height.isFinite,
+                  rect.width > 0,
+                  rect.height > 0
+            else {
+                return centeredAnchor(in: view)
+            }
+
+            return rect.intersection(view.bounds).isNull ? centeredAnchor(in: view) : rect
+        }
+
+        private func centeredAnchor(in view: AcademicPDFView) -> NSRect {
+            NSRect(x: view.bounds.midX - 1, y: view.bounds.midY - 1, width: 2, height: 2)
+        }
+
+        private func preferredEdge(for anchor: NSRect, in view: AcademicPDFView) -> NSRectEdge {
+            anchor.midX > view.bounds.midX ? .minX : .maxX
+        }
+    }
+}
+
+struct PDFThumbnailRepresentedView: NSViewRepresentable {
+    @EnvironmentObject private var appState: AppState
+
+    func makeNSView(context: Context) -> PDFThumbnailView {
+        let view = PDFThumbnailView()
+        view.thumbnailSize = CGSize(width: 88, height: 116)
+        view.backgroundColor = .clear
+        view.maximumNumberOfColumns = 1
+        view.labelFont = NSFont.systemFont(ofSize: 11)
+        view.allowsDragging = false
+        view.pdfView = appState.pdfView
+        return view
+    }
+
+    func updateNSView(_ view: PDFThumbnailView, context: Context) {
+        view.pdfView = appState.pdfView
+    }
+}

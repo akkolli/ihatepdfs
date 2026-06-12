@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="920" viewBox="0 0 760 920" role="img" aria-label="I Hate PDFs comments sidebar screenshot">
+  <rect width="760" height="920" fill="#f5f5f7"/>
+  <rect x="80" y="60" width="600" height="800" rx="10" fill="#fbfbfd" stroke="#c9c9ce"/>
+  <text x="118" y="118" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="26" fill="#202124">Comments</text>
+  <text x="118" y="146" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" fill="#606166">4 total</text>
+  <rect x="118" y="176" width="524" height="34" rx="7" fill="#ffffff" stroke="#d1d1d6"/>
+  <text x="136" y="198" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" fill="#7a7a80">Search comments</text>
+  <rect x="118" y="242" width="524" height="1" fill="#d8d8dd"/>
+  <text x="118" y="282" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="17" font-weight="600" fill="#202124">Page 2</text>
+  <rect x="118" y="306" width="524" height="154" rx="8" fill="#ffffff" stroke="#d5d5da"/>
+  <text x="140" y="344" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="600" fill="#202124">Highlight</text>
+  <text x="140" y="374" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" fill="#606166">Professor</text>
+  <text x="140" y="406" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="15" fill="#202124">This is the core passage for Friday's discussion.</text>
+  <rect x="150" y="480" width="492" height="86" rx="8" fill="#f1f8f8" stroke="#c8dddd"/>
+  <text x="172" y="516" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="600" fill="#202124">Reply</text>
+  <text x="172" y="546" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" fill="#606166">Add this to the lecture notes.</text>
+  <text x="118" y="624" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="17" font-weight="600" fill="#202124">Page 5</text>
+  <rect x="118" y="648" width="524" height="118" rx="8" fill="#ffffff" stroke="#d5d5da"/>
+  <text x="140" y="686" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="600" fill="#202124">Note</text>
+  <text x="140" y="716" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" fill="#606166">Professor</text>
+  <text x="140" y="748" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="15" fill="#202124">Compare this footnote with the appendix.</text>
+</svg>

@@ -1,0 +1,160 @@
+import IHatePDFsCore
+import SwiftUI
+
+@MainActor
+final class CommentPopoverModel: ObservableObject {
+    let context: AnnotationEditorContext
+
+    @Published var text: String
+    @Published var author: String
+
+    private weak var appState: AppState?
+    private var didFinish = false
+
+    init(context: AnnotationEditorContext, appState: AppState) {
+        self.context = context
+        self.appState = appState
+        self.text = context.initialText
+        self.author = context.initialAuthor
+    }
+
+    func commit() {
+        guard !didFinish else { return }
+        didFinish = true
+        appState?.saveEditor(context, text: text, author: author)
+    }
+
+    func delete() {
+        guard !didFinish else { return }
+        didFinish = true
+        appState?.deleteAnnotations(in: context)
+    }
+
+    func updateDraft() {
+        guard !didFinish else { return }
+        appState?.updateEditorDraft(context, text: text, author: author)
+    }
+}
+
+struct CommentEditorView: View {
+    @ObservedObject var model: CommentPopoverModel
+    @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var isCommentFocused: Bool
+    private let editorHorizontalInset: CGFloat = 9
+    private let editorVerticalInset: CGFloat = 7
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            commentField
+            footer
+        }
+        .padding(12)
+        .frame(width: 340)
+        .background(.regularMaterial)
+        .onAppear {
+            DispatchQueue.main.async {
+                isCommentFocused = true
+            }
+        }
+        .onChange(of: model.text) { _ in
+            model.updateDraft()
+        }
+        .onChange(of: model.author) { _ in
+            model.updateDraft()
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbolName)
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                .frame(width: 16)
+
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                model.commit()
+            } label: {
+                Label("Done", systemImage: "checkmark")
+            }
+            .labelStyle(.iconOnly)
+            .keyboardShortcut(.return, modifiers: [.command])
+            .help("Done")
+        }
+    }
+
+    private var commentField: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $model.text)
+                .font(.body)
+                .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                .scrollContentBackground(.hidden)
+                .focused($isCommentFocused)
+                .padding(.horizontal, editorHorizontalInset)
+                .padding(.vertical, editorVerticalInset)
+
+            if model.text.isEmpty {
+                Text("Add comment")
+                    .font(.body)
+                    .foregroundStyle(InterfacePalette.quietText(for: colorScheme))
+                    .padding(.leading, editorHorizontalInset + 7)
+                    .padding(.top, editorVerticalInset)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(minHeight: 118)
+        .background(InterfacePalette.fieldFill(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 1)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            TextField("Author", text: $model.author)
+                .textFieldStyle(.plain)
+                .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                .padding(.horizontal, 7)
+                .frame(height: 28)
+                .background(InterfacePalette.fieldFill(for: colorScheme))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 1)
+                }
+                .frame(width: 190)
+
+            Spacer()
+
+            if model.context.allowsDelete {
+                Button(role: .destructive) {
+                    model.delete()
+                } label: {
+                    Label("Delete Annotation", systemImage: "trash")
+                }
+                .labelStyle(.iconOnly)
+                .help("Delete Annotation")
+            }
+        }
+    }
+
+    private var title: String {
+        model.context.title.replacingOccurrences(of: " Comment", with: "")
+    }
+
+    private var symbolName: String {
+        guard let annotation = model.context.primaryAnnotation else {
+            return "text.bubble"
+        }
+
+        let kind = AcademicAnnotationKind(annotation: annotation)
+        return kind.symbolName
+    }
+}
