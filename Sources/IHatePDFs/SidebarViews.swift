@@ -574,6 +574,11 @@ private struct SidebarReplyComposer: View {
                 isFocused = true
             }
         }
+        .commitOnPlainReturn {
+            if !appState.sidebarReplyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                appState.commitSidebarReply()
+            }
+        }
     }
 }
 

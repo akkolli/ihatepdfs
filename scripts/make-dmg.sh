@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="I Hate PDFs"
+RELEASE_VERSION="${RELEASE_VERSION:-0.2}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
-DMG_PATH="$DIST_DIR/IHatePDFs.dmg"
+DMG_PATH="$DIST_DIR/IHatePDFs-v$RELEASE_VERSION-macos.dmg"
 
 if [[ ! -d "$APP_DIR" ]]; then
   "$ROOT_DIR/scripts/build-app.sh"

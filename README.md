@@ -12,13 +12,13 @@ Supported Mac architectures: Apple Silicon and Intel, subject to the local Swift
 
 ## Latest Release
 
-Download the v0.1 macOS DMG from the GitHub release page:
+Download the v0.2 macOS DMG from the GitHub release page:
 
-<https://github.com/akkolli/ihatepdfs/releases/tag/v0.1>
+<https://github.com/akkolli/ihatepdfs/releases/tag/v0.2>
 
-Use `IHatePDFs-v0.1-macos.dmg` for normal app installation. Open the DMG, then drag `I Hate PDFs.app` into `/Applications`.
+Use `IHatePDFs-v0.2-macos.dmg` for normal app installation. Open the DMG, then drag `I Hate PDFs.app` into `/Applications`.
 
-Signing status for v0.1: the DMG is ad-hoc signed, but it is not Developer ID signed or Apple-notarized yet. macOS Gatekeeper may require opening the app from Finder with Control-click, then Open, on first launch.
+Signing status for v0.2: the DMG is ad-hoc signed, but it is not Developer ID signed or Apple-notarized yet. macOS Gatekeeper may require opening the app from Finder with Control-click, then Open, on first launch.
 
 ## Features
 
@@ -41,7 +41,7 @@ Signing status for v0.1: the DMG is ad-hoc signed, but it is not Developer ID si
 
 ### Download Releases
 
-https://github.com/akkolli/ihatepdfs/releases/tag/v0.1
+https://github.com/akkolli/ihatepdfs/releases/tag/v0.2
 
 
 ## Build From Source
@@ -82,13 +82,13 @@ Create a downloadable `.dmg`:
 scripts/make-dmg.sh
 ```
 
-The packaged app is written to `dist/I Hate PDFs.app`; the disk image is written to `dist/IHatePDFs.dmg`.
+The packaged app is written to `dist/I Hate PDFs.app`; the disk image is written to `dist/IHatePDFs-v0.2-macos.dmg`.
 
 ## Installation
 
-Download `IHatePDFs-v0.1-macos.dmg` from the latest GitHub release, open it, and move `I Hate PDFs.app` into `/Applications`.
+Download `IHatePDFs-v0.2-macos.dmg` from the latest GitHub release, open it, and move `I Hate PDFs.app` into `/Applications`.
 
-For v0.1 and local development builds, the app is not Developer ID signed or notarized. If macOS blocks first launch, open Finder, Control-click `I Hate PDFs.app`, choose Open, then confirm.
+For v0.2 and local development builds, the app is not Developer ID signed or notarized. If macOS blocks first launch, open Finder, Control-click `I Hate PDFs.app`, choose Open, then confirm.
 
 ## Development
 

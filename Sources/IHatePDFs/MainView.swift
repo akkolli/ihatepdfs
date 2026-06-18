@@ -129,6 +129,15 @@ private struct ReaderToolbar: ToolbarContent {
             }
             .disabled(appState.document == nil)
             .help("Toggle Page Sidebar")
+
+            Button {
+                appState.showCommentsSidebar.toggle()
+            } label: {
+                Label("Comments Sidebar", systemImage: "sidebar.right")
+            }
+            .disabled(appState.document == nil)
+            .help(appState.showCommentsSidebar ? "Hide Comments Sidebar" : "Show Comments Sidebar")
+            .accessibilityLabel("Toggle Comments Sidebar")
         }
 
         ToolbarItemGroup(placement: .principal) {
@@ -287,17 +296,6 @@ private struct ReaderToolbar: ToolbarContent {
             }
             .disabled(appState.document == nil)
             .help("Share PDF")
-        }
-
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                appState.showCommentsSidebar.toggle()
-            } label: {
-                Label("Comments Sidebar", systemImage: "sidebar.right")
-            }
-            .disabled(appState.document == nil)
-            .help(appState.showCommentsSidebar ? "Hide Comments Sidebar" : "Show Comments Sidebar")
-            .accessibilityLabel("Toggle Comments Sidebar")
         }
     }
 }

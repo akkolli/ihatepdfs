@@ -3,6 +3,8 @@ set -euo pipefail
 
 APP_NAME="I Hate PDFs"
 EXECUTABLE_NAME="IHatePDFs"
+APP_VERSION="${APP_VERSION:-0.2.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-2}"
 CONFIGURATION="${CONFIGURATION:-release}"
 if [[ -z "${ARCHS+x}" && "$CONFIGURATION" == "release" ]]; then
   ARCHS="arm64 x86_64"
@@ -97,9 +99,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     </dict>
   </array>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>NSHighResolutionCapable</key>

@@ -69,6 +69,9 @@ struct CommentEditorView: View {
         .onChange(of: model.author) { _ in
             model.updateDraft()
         }
+        .commitOnPlainReturn {
+            model.commit()
+        }
     }
 
     private var header: some View {
