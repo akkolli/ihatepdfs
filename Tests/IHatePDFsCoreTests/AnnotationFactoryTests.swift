@@ -42,6 +42,97 @@ final class AnnotationFactoryTests: XCTestCase {
         )
     }
 
+    func testHighlightUsesHigherContrastDefaultColor() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .highlight,
+                comment: "",
+                author: "Professor"
+            ).first
+        )
+
+        let annotationColor = try rgbaComponents(insertion.annotation.color)
+        let defaultColor = try rgbaComponents(AcademicAnnotationPalette.highlight)
+        XCTAssertEqual(annotationColor.red, defaultColor.red, accuracy: 0.001)
+        XCTAssertEqual(annotationColor.green, defaultColor.green, accuracy: 0.001)
+        XCTAssertEqual(annotationColor.blue, defaultColor.blue, accuracy: 0.001)
+        XCTAssertEqual(annotationColor.alpha, defaultColor.alpha, accuracy: 0.001)
+        XCTAssertGreaterThanOrEqual(annotationColor.alpha, 0.5)
+    }
+
+    func testHighlightCreatedWithoutCommentHasNoPopupOrCommentText() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .highlight,
+                comment: "",
+                author: "Professor"
+            ).first
+        )
+
+        XCTAssertNil(insertion.popup)
+        XCTAssertEqual(AnnotationKeys.commentText(for: insertion.annotation), "")
+        XCTAssertNil(insertion.annotation.contents)
+        XCTAssertEqual(AcademicAnnotationKind(annotation: insertion.annotation), .highlight)
+    }
+
+    func testHighlightUsesConfiguredColor() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let configuredColor = NSColor(
+            calibratedRed: 0.18,
+            green: 0.58,
+            blue: 0.95,
+            alpha: 0.52
+        )
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .highlight,
+                comment: "",
+                author: "Professor",
+                highlightColor: configuredColor
+            ).first
+        )
+
+        try XCTAssertColor(insertion.annotation.color, equals: configuredColor)
+    }
+
+    func testSelectionBoundCommentUsesConfiguredColor() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 8, length: 10)))
+        let configuredColor = NSColor(
+            calibratedRed: 0.88,
+            green: 0.18,
+            blue: 0.26,
+            alpha: 0.34
+        )
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .comment,
+                comment: "",
+                author: "Professor",
+                commentColor: configuredColor
+            ).first
+        )
+
+        try XCTAssertColor(insertion.annotation.color, equals: configuredColor)
+        XCTAssertEqual(
+            insertion.annotation.value(forAnnotationKey: AnnotationKeys.appKind) as? String,
+            AnnotationKeys.appKindComment
+        )
+    }
+
     func testSelectionBoundCommentRoundTripsAsCommentKind() throws {
         let document = try makeSelectableTextDocument()
         let page = try XCTUnwrap(document.page(at: 0))
@@ -203,6 +294,108 @@ final class AnnotationFactoryTests: XCTestCase {
             AnnotationKeys.annotation($0, hasSubtype: .highlight)
                 && $0.contents == "Exported comment text."
         })
+    }
+
+    func testPreviewCompatibleExportKeepsMarkupCommentWithoutPopupAnnotation() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let insertion = try XCTUnwrap(
+            AnnotationFactory.markupInsertions(
+                from: selection,
+                style: .highlight,
+                comment: "Preview should show this comment.",
+                author: "Professor"
+            ).first
+        )
+
+        page.addAnnotation(insertion.annotation)
+        if let popup = insertion.popup {
+            page.addAnnotation(popup)
+        }
+
+        XCTAssertTrue(AnnotationFactory.prepareForPreviewCompatibleExport(insertion.annotation, on: page))
+        XCTAssertNil(insertion.annotation.popup)
+        XCTAssertEqual(insertion.annotation.contents, "Preview should show this comment.")
+        XCTAssertFalse(page.annotations.contains {
+            AnnotationKeys.annotation($0, hasSubtype: .popup)
+        })
+
+        let reopenedPage = try saveAndReopen(document).page(at: 0).unwrap()
+        let highlights = reopenedPage.annotations.filter {
+            AnnotationKeys.annotation($0, hasSubtype: .highlight)
+        }
+
+        XCTAssertEqual(highlights.count, 1)
+        XCTAssertEqual(highlights.first?.contents, "Preview should show this comment.")
+        XCTAssertFalse(reopenedPage.annotations.contains {
+            AnnotationKeys.annotation($0, hasSubtype: .popup)
+        })
+    }
+
+    func testPreviewCompatibleExportRecoversPopupOnlyCommentText() throws {
+        let document = try makeSelectableTextDocument()
+        let page = try XCTUnwrap(document.page(at: 0))
+        let selection = try XCTUnwrap(page.selection(for: NSRange(location: 0, length: 29)))
+        let bounds = selection.bounds(for: page)
+        let annotation = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
+        annotation.markupType = .highlight
+        annotation.color = AcademicAnnotationPalette.highlight
+        annotation.userName = "Professor"
+        annotation.quadrilateralPoints = [
+            NSValue(point: CGPoint(x: 0, y: bounds.height)),
+            NSValue(point: CGPoint(x: bounds.width, y: bounds.height)),
+            NSValue(point: .zero),
+            NSValue(point: CGPoint(x: bounds.width, y: 0))
+        ]
+        let popup = PDFAnnotation(
+            bounds: CGRect(x: 360, y: 620, width: 220, height: 90),
+            forType: .popup,
+            withProperties: nil
+        )
+        popup.contents = "Popup-only comment from another reader."
+        annotation.popup = popup
+
+        page.addAnnotation(annotation)
+        page.addAnnotation(popup)
+
+        XCTAssertEqual(AnnotationKeys.commentText(for: annotation), "Popup-only comment from another reader.")
+        XCTAssertTrue(AnnotationFactory.prepareForPreviewCompatibleExport(annotation, on: page))
+        XCTAssertNil(annotation.popup)
+        XCTAssertEqual(annotation.contents, "Popup-only comment from another reader.")
+        XCTAssertFalse(page.annotations.contains {
+            AnnotationKeys.annotation($0, hasSubtype: .popup)
+        })
+    }
+
+    func testEmptyAppCommentTextFallsBackToStandardContents() throws {
+        let annotation = PDFAnnotation(
+            bounds: CGRect(x: 72, y: 620, width: 260, height: 24),
+            forType: .highlight,
+            withProperties: nil
+        )
+        AnnotationKeys.setCommentText("", for: annotation)
+        annotation.contents = "Comment added by another PDF reader."
+
+        XCTAssertEqual(AnnotationKeys.commentText(for: annotation), "Comment added by another PDF reader.")
+    }
+
+    func testEmptyAppCommentTextFallsBackToPopupContents() throws {
+        let annotation = PDFAnnotation(
+            bounds: CGRect(x: 72, y: 620, width: 260, height: 24),
+            forType: .highlight,
+            withProperties: nil
+        )
+        let popup = PDFAnnotation(
+            bounds: CGRect(x: 360, y: 620, width: 220, height: 90),
+            forType: .popup,
+            withProperties: nil
+        )
+        AnnotationKeys.setCommentText("", for: annotation)
+        popup.contents = "Popup comment added by another PDF reader."
+        annotation.popup = popup
+
+        XCTAssertEqual(AnnotationKeys.commentText(for: annotation), "Popup comment added by another PDF reader.")
     }
 
     func testAddingAnnotationPreservesPriorAnnotation() throws {
@@ -379,6 +572,66 @@ final class AnnotationFactoryTests: XCTestCase {
         XCTAssertEqual(replySnapshot.parentID, parentSnapshot.id)
     }
 
+    func testUnresolvedStringReplyParentIDStaysVisibleAsTopLevelReply() throws {
+        let document = PDFDocument()
+        let page = PDFPage()
+        document.insert(page, at: 0)
+
+        let orphanedReply = PDFAnnotation(
+            bounds: CGRect(x: 100, y: 100, width: 24, height: 24),
+            forType: .text,
+            withProperties: nil
+        )
+        AnnotationFactory.standardize(
+            orphanedReply,
+            comment: "Reply from an external reader.",
+            author: "Reader",
+            date: Date()
+        )
+        _ = orphanedReply.setValue("missing-parent", forAnnotationKey: AnnotationKeys.inReplyTo)
+        _ = orphanedReply.setValue("R", forAnnotationKey: AnnotationKeys.replyType)
+        page.addAnnotation(orphanedReply)
+
+        let snapshot = try XCTUnwrap(AnnotationReader.snapshots(in: document).first)
+        XCTAssertEqual(snapshot.kind, .reply)
+        XCTAssertNil(snapshot.parentID)
+        XCTAssertFalse(snapshot.isReply)
+        XCTAssertEqual(snapshot.contents, "Reply from an external reader.")
+    }
+
+    func testPageScopedSnapshotsOnlyReadRequestedPages() throws {
+        let document = PDFDocument()
+        let firstPage = PDFPage()
+        let secondPage = PDFPage()
+        let thirdPage = PDFPage()
+        document.insert(firstPage, at: 0)
+        document.insert(secondPage, at: 1)
+        document.insert(thirdPage, at: 2)
+
+        let firstAnnotation = AnnotationFactory.noteInsertion(
+            on: firstPage,
+            near: CGPoint(x: 100, y: 100),
+            comment: "First page note",
+            author: "Professor"
+        ).annotation
+        firstPage.addAnnotation(firstAnnotation)
+
+        let thirdAnnotation = AnnotationFactory.noteInsertion(
+            on: thirdPage,
+            near: CGPoint(x: 200, y: 200),
+            comment: "Third page note",
+            author: "Professor"
+        ).annotation
+        thirdPage.addAnnotation(thirdAnnotation)
+
+        let scopedSnapshots = AnnotationReader.snapshots(in: document, pages: [thirdPage, thirdPage])
+
+        XCTAssertEqual(scopedSnapshots.count, 1)
+        XCTAssertEqual(scopedSnapshots.first?.contents, "Third page note")
+        XCTAssertEqual(scopedSnapshots.first?.pageIndex, 2)
+        XCTAssertFalse(scopedSnapshots.contains { $0.annotation === firstAnnotation })
+    }
+
     func testFreeTextCreatesStandardFreeTextAnnotation() throws {
         let page = PDFPage()
         let insertion = AnnotationFactory.freeTextInsertion(
@@ -438,6 +691,35 @@ final class AnnotationFactoryTests: XCTestCase {
         let reopened = try XCTUnwrap(PDFDocument(url: outputURL))
         try? FileManager.default.removeItem(at: outputURL)
         return reopened
+    }
+
+    private func XCTAssertColor(
+        _ actual: NSColor,
+        equals expected: NSColor,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let actualComponents = try rgbaComponents(actual, file: file, line: line)
+        let expectedComponents = try rgbaComponents(expected, file: file, line: line)
+
+        XCTAssertEqual(actualComponents.red, expectedComponents.red, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(actualComponents.green, expectedComponents.green, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(actualComponents.blue, expectedComponents.blue, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(actualComponents.alpha, expectedComponents.alpha, accuracy: 0.001, file: file, line: line)
+    }
+
+    private func rgbaComponents(
+        _ color: NSColor,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        let rgb = try XCTUnwrap(color.usingColorSpace(.deviceRGB), file: file, line: line)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        rgb.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return (red, green, blue, alpha)
     }
 }
 

@@ -1,8 +1,30 @@
 # Release Notes
 
-## Version 0.2
+## I Hate PDFs v0.3.0
 
-- Fixed multi-window document state so opening a PDF with Finder Open With does not mirror it into an existing window.
-- Fixed zoom commands so toolbar and menu zoom actions apply to the focused PDF window instead of another open window.
-- Fixed comment entry so pressing Return saves a new comment without requiring the mouse.
-- Kept the page and comments sidebar toolbar icons visible in narrow windows by grouping sidebar controls in the leading toolbar.
+Version 0.3 makes I Hate PDFs much safer and more comfortable for everyday PDF review.
+
+### What's New
+
+- Settings for highlight and comment colors, including opacity.
+- Drag-and-drop opening from the empty app window.
+- Standalone highlights that do not open a comment editor.
+- Return saves a comment or reply; Shift-Return inserts a new line.
+- Better default highlight contrast.
+- Mac App Store packaging for `net.akkolli.ihatepdfs`.
+
+### Reliability Fixes
+
+- Comment text now survives when saved PDFs are opened in macOS Preview and Adobe Acrobat.
+- The comment editor focuses correctly when a new selected-text comment is created.
+- Comment popovers now open from the actual annotated text instead of nearby whitespace.
+- The app warns before unsaved annotations or reply drafts are lost.
+- Search highlights clear correctly when search is closed or edited.
+- The comments sidebar keeps threads, filters, replies, and selected highlights in sync.
+
+### Version
+
+- App version: `0.3.0`
+- Build number: `4`
+- Direct-download DMG name: `IHatePDFs-v0.3-macos.dmg`
+- Mac App Store package name: `IHatePDFs-v0.3-macos-appstore.pkg`

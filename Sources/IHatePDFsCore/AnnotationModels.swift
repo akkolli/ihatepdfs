@@ -157,11 +157,16 @@ public enum AnnotationKeys {
     public static let appCommentText = PDFAnnotationKey(rawValue: "IHatePDFsCommentText")
 
     public static func commentText(for annotation: PDFAnnotation) -> String {
-        if let value = annotation.value(forAnnotationKey: appCommentText) as? String {
+        if let value = annotation.value(forAnnotationKey: appCommentText) as? String,
+           !value.isEmpty {
             return value
         }
 
-        return annotation.contents ?? ""
+        if let contents = annotation.contents, !contents.isEmpty {
+            return contents
+        }
+
+        return annotation.popup?.contents ?? ""
     }
 
     public static func setCommentText(_ text: String, for annotation: PDFAnnotation) {
@@ -287,54 +292,42 @@ public enum AnnotationKeys {
 public enum AnnotationReader {
     public static func snapshots(in document: PDFDocument) -> [AnnotationSnapshot] {
         var result: [AnnotationSnapshot] = []
+        var namedAnnotationIDs: [String: String]?
 
         for pageIndex in 0..<document.pageCount {
             guard let page = document.page(at: pageIndex) else { continue }
-
-            for (annotationIndex, annotation) in page.annotations.enumerated() {
-                guard !AnnotationKeys.annotation(annotation, hasSubtype: .popup) else { continue }
-
-                let kind = AcademicAnnotationKind(annotation: annotation)
-                let contents = AnnotationKeys.commentText(for: annotation)
-                guard kind != .other || !contents.isEmpty else { continue }
-
-                let id = AnnotationKeys.stableID(
-                    for: annotation,
-                    pageIndex: pageIndex,
-                    annotationIndex: annotationIndex
-                )
-                let pageLabel = page.label ?? "\(pageIndex + 1)"
-                let author = annotation.userName
-                    ?? annotation.value(forAnnotationKey: .textLabel) as? String
-                    ?? "Unknown"
-                let createdAt = AnnotationKeys.dateValue(for: AnnotationKeys.creationDate, in: annotation)
-                    ?? annotation.modificationDate
-                let status = annotation.value(forAnnotationKey: AnnotationKeys.state) as? String
-                    ?? "Unmarked"
-                let parentID = AnnotationKeys.parentID(for: annotation, document: document)
-
-                result.append(
-                    AnnotationSnapshot(
-                        id: id,
-                        pageIndex: pageIndex,
-                        pageLabel: pageLabel,
-                        annotationIndex: annotationIndex,
-                        kind: kind,
-                        author: author,
-                        createdAt: createdAt,
-                        modifiedAt: annotation.modificationDate,
-                        status: status,
-                        contents: contents,
-                        bounds: annotation.bounds,
-                        annotation: annotation,
-                        page: page,
-                        parentID: parentID
-                    )
-                )
-            }
+            result.append(contentsOf: snapshots(
+                in: document,
+                page: page,
+                pageIndex: pageIndex,
+                namedAnnotationIDs: &namedAnnotationIDs
+            ))
         }
 
-        return result.sorted { left, right in
+        return sorted(result)
+    }
+
+    public static func snapshots(in document: PDFDocument, pages: [PDFPage]) -> [AnnotationSnapshot] {
+        var result: [AnnotationSnapshot] = []
+        var seenPageIndexes = Set<Int>()
+        var namedAnnotationIDs: [String: String]?
+
+        for page in pages {
+            let pageIndex = document.index(for: page)
+            guard pageIndex != NSNotFound, seenPageIndexes.insert(pageIndex).inserted else { continue }
+            result.append(contentsOf: snapshots(
+                in: document,
+                page: page,
+                pageIndex: pageIndex,
+                namedAnnotationIDs: &namedAnnotationIDs
+            ))
+        }
+
+        return sorted(result)
+    }
+
+    public static func sorted(_ snapshots: [AnnotationSnapshot]) -> [AnnotationSnapshot] {
+        snapshots.sorted { left, right in
             if left.pageIndex != right.pageIndex {
                 return left.pageIndex < right.pageIndex
             }
@@ -343,5 +336,113 @@ public enum AnnotationReader {
             }
             return left.bounds.minX < right.bounds.minX
         }
+    }
+
+    private static func snapshots(
+        in document: PDFDocument,
+        page: PDFPage,
+        pageIndex: Int,
+        namedAnnotationIDs: inout [String: String]?
+    ) -> [AnnotationSnapshot] {
+        var result: [AnnotationSnapshot] = []
+
+        for (annotationIndex, annotation) in page.annotations.enumerated() {
+            guard !AnnotationKeys.annotation(annotation, hasSubtype: .popup) else { continue }
+
+            let kind = AcademicAnnotationKind(annotation: annotation)
+            let contents = AnnotationKeys.commentText(for: annotation)
+            guard kind != .other || !contents.isEmpty else { continue }
+
+            let id = AnnotationKeys.stableID(
+                for: annotation,
+                pageIndex: pageIndex,
+                annotationIndex: annotationIndex
+            )
+            let pageLabel = page.label ?? "\(pageIndex + 1)"
+            let author = annotation.userName
+                ?? annotation.value(forAnnotationKey: .textLabel) as? String
+                ?? "Unknown"
+            let createdAt = AnnotationKeys.dateValue(for: AnnotationKeys.creationDate, in: annotation)
+                ?? annotation.modificationDate
+            let status = annotation.value(forAnnotationKey: AnnotationKeys.state) as? String
+                ?? "Unmarked"
+            let parentID = parentID(
+                for: annotation,
+                document: document,
+                namedAnnotationIDs: &namedAnnotationIDs
+            )
+
+            result.append(
+                AnnotationSnapshot(
+                    id: id,
+                    pageIndex: pageIndex,
+                    pageLabel: pageLabel,
+                    annotationIndex: annotationIndex,
+                    kind: kind,
+                    author: author,
+                    createdAt: createdAt,
+                    modifiedAt: annotation.modificationDate,
+                    status: status,
+                    contents: contents,
+                    bounds: annotation.bounds,
+                    annotation: annotation,
+                    page: page,
+                    parentID: parentID
+                )
+            )
+        }
+
+        return result
+    }
+
+    private static func parentID(
+        for annotation: PDFAnnotation,
+        document: PDFDocument,
+        namedAnnotationIDs: inout [String: String]?
+    ) -> String? {
+        if let parentID = annotation.value(forAnnotationKey: AnnotationKeys.inReplyTo) as? String,
+           !parentID.isEmpty {
+            if namedAnnotationIDs == nil {
+                namedAnnotationIDs = makeNamedAnnotationIDs(in: document)
+            }
+            return namedAnnotationIDs?[parentID]
+        }
+
+        guard let parent = annotation.value(forAnnotationKey: AnnotationKeys.inReplyTo) as? PDFAnnotation else {
+            return nil
+        }
+
+        guard let page = parent.page,
+              document.index(for: page) != NSNotFound
+        else {
+            return parent.value(forAnnotationKey: .name) as? String
+        }
+
+        let pageIndex = document.index(for: page)
+        let annotationIndex = page.annotations.firstIndex(where: { $0 === parent }) ?? 0
+        return AnnotationKeys.stableID(for: parent, pageIndex: pageIndex, annotationIndex: annotationIndex)
+    }
+
+    private static func makeNamedAnnotationIDs(in document: PDFDocument) -> [String: String] {
+        var result: [String: String] = [:]
+
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex) else { continue }
+            for (annotationIndex, annotation) in page.annotations.enumerated() {
+                guard let name = annotation.value(forAnnotationKey: .name) as? String,
+                      !name.isEmpty
+                else {
+                    continue
+                }
+
+                result[name] = AnnotationKeys.stableID(
+                    for: annotation,
+                    pageIndex: pageIndex,
+                    annotationIndex: annotationIndex
+                )
+            }
+        }
+
+        return result
     }
 }

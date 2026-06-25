@@ -1,5 +1,6 @@
 import IHatePDFsCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MainView: View {
     @EnvironmentObject private var appState: AppState
@@ -56,12 +57,13 @@ private struct PDFReaderView: View {
 
 private struct EmptyDocumentView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "doc.richtext")
+            Image(systemName: isDropTargeted ? "tray.and.arrow.down" : "doc.richtext")
                 .font(.system(size: 48, weight: .regular))
-                .foregroundStyle(.secondary)
+                .foregroundColor(isDropTargeted ? .accentColor : .secondary)
 
             Text("Open a PDF")
                 .font(.title2)
@@ -82,6 +84,20 @@ private struct EmptyDocumentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(
+                    isDropTargeted ? Color.accentColor : Color.clear,
+                    style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                )
+                .padding(18)
+        }
+        .onDrop(
+            of: [UTType.fileURL.identifier],
+            isTargeted: $isDropTargeted
+        ) { providers in
+            appState.openDroppedDocument(from: providers)
+        }
     }
 }
 
@@ -97,6 +113,9 @@ private struct StatusBarView: View {
             Spacer()
 
             if appState.document != nil {
+                if appState.hasUnsentSidebarReplyDraft {
+                    Text("Reply draft")
+                }
                 Text("\(appState.annotations.count) annotations")
                 Text("Page \(appState.currentPageIndex + 1) of \(max(appState.pageCount, 1))")
             }
@@ -146,7 +165,7 @@ private struct ReaderToolbar: ToolbarContent {
             } label: {
                 Label("Previous Page", systemImage: "chevron.up")
             }
-            .disabled(appState.document == nil)
+            .disabled(!appState.canGoToPreviousPage)
             .help("Previous Page")
 
             TextField("Page", text: $appState.pageText)
@@ -165,7 +184,7 @@ private struct ReaderToolbar: ToolbarContent {
             } label: {
                 Label("Next Page", systemImage: "chevron.down")
             }
-            .disabled(appState.document == nil)
+            .disabled(!appState.canGoToNextPage)
             .help("Next Page")
         }
 
@@ -225,7 +244,7 @@ private struct ReaderToolbar: ToolbarContent {
             } label: {
                 Label("Highlight", systemImage: "highlighter")
             }
-            .disabled(appState.document == nil)
+            .disabled(appState.document == nil || !appState.hasTextSelection)
             .help("Highlight Selection")
 
             Button {
@@ -233,7 +252,7 @@ private struct ReaderToolbar: ToolbarContent {
             } label: {
                 Label("Underline", systemImage: "underline")
             }
-            .disabled(appState.document == nil)
+            .disabled(appState.document == nil || !appState.hasTextSelection)
             .help("Underline Selection")
 
             Button {
@@ -243,7 +262,7 @@ private struct ReaderToolbar: ToolbarContent {
             }
             .accessibilityLabel("Comment on Selection")
             .help("Comment on Selection")
-            .disabled(appState.document == nil)
+            .disabled(appState.document == nil || !appState.hasTextSelection)
         }
 
         ToolbarItemGroup {
@@ -286,8 +305,8 @@ private struct ReaderToolbar: ToolbarContent {
             } label: {
                 Label("Save", systemImage: "square.and.arrow.down")
             }
-            .disabled(appState.document == nil)
-            .help("Save PDF")
+            .disabled(!appState.canSaveDocument)
+            .help(appState.saveHelpText)
 
             Button {
                 appState.shareDocument()

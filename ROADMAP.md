@@ -14,7 +14,18 @@
 - `.app` and `.dmg` build scripts.
 - Visual QA screenshots for empty, reading, popover, comments, and dark-mode states.
 
-## Version 0.2
+## Shipped In Version 0.3
+
+- Settings for highlight and comment colors.
+- Higher-contrast default highlights and comments.
+- Standalone highlights that do not open a comment editor.
+- Drag-and-drop PDF opening from the empty app window.
+- Return-to-save and Shift-Return-for-newline comment behavior.
+- Preview-compatible exported comments for selected-text markup.
+- Safer close/open/quit prompts for unsaved annotations and reply drafts.
+- Mac App Store packaging path for `net.akkolli.ihatepdfs`.
+
+## Next
 
 - More explicit visual selection handles for the active annotation.
 - Better undo/redo integration for annotation edits.

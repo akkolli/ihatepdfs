@@ -2,14 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/release-version.sh"
 APP_NAME="I Hate PDFs"
-RELEASE_VERSION="${RELEASE_VERSION:-0.2}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
 DMG_PATH="$DIST_DIR/IHatePDFs-v$RELEASE_VERSION-macos.dmg"
+BUILD_APP="${BUILD_APP:-1}"
 
-if [[ ! -d "$APP_DIR" ]]; then
-  "$ROOT_DIR/scripts/build-app.sh"
+if [[ "$BUILD_APP" != "0" || ! -d "$APP_DIR" ]]; then
+  APP_VERSION="$APP_VERSION" BUILD_NUMBER="$BUILD_NUMBER" "$ROOT_DIR/scripts/build-app.sh"
 fi
 
 rm -f "$DMG_PATH"

@@ -29,7 +29,6 @@ standardize(
     author: "Professor"
 )
 page.addAnnotation(highlight)
-addPopup(for: highlight, bounds: CGRect(x: 352, y: 592, width: 240, height: 110))
 
 let selectedTextComment = PDFAnnotation(
     bounds: CGRect(x: 72, y: 594, width: 260, height: 22),
@@ -42,12 +41,11 @@ selectedTextComment.quadrilateralPoints = quadPoints(width: 260, height: 22)
 standardize(
     selectedTextComment,
     name: "verify-selected-text-comment",
-    contents: "This selected-text comment is saved as standard PDF markup with popup contents.",
+    contents: "This selected-text comment is saved as standard parent annotation contents.",
     author: "Professor"
 )
 _ = selectedTextComment.setValue("Comment", forAnnotationKey: PDFAnnotationKey(rawValue: "IHatePDFsKind"))
 page.addAnnotation(selectedTextComment)
-addPopup(for: selectedTextComment, bounds: CGRect(x: 352, y: 472, width: 240, height: 110))
 
 let underline = PDFAnnotation(
     bounds: CGRect(x: 72, y: 570, width: 260, height: 24),
@@ -64,7 +62,6 @@ standardize(
     author: "Professor"
 )
 page.addAnnotation(underline)
-addPopup(for: underline, bounds: CGRect(x: 352, y: 540, width: 240, height: 110))
 
 let textNote = PDFAnnotation(
     bounds: CGRect(x: 360, y: 620, width: 28, height: 28),
@@ -151,18 +148,6 @@ func standardize(
     _ = annotation.setValue(verificationDate, forAnnotationKey: .date)
     _ = annotation.setValue("D:20261215132000Z00'00'", forAnnotationKey: PDFAnnotationKey(rawValue: "CreationDate"))
     _ = annotation.setValue("Unmarked", forAnnotationKey: PDFAnnotationKey(rawValue: "State"))
-}
-
-func addPopup(for annotation: PDFAnnotation, bounds: CGRect) {
-    let popup = PDFAnnotation(bounds: bounds, forType: .popup, withProperties: nil)
-    popup.contents = annotation.contents
-    popup.userName = annotation.userName
-    popup.modificationDate = annotation.modificationDate
-    popup.isOpen = false
-    popup.shouldDisplay = true
-    popup.shouldPrint = true
-    annotation.popup = popup
-    page.addAnnotation(popup)
 }
 
 func quadPoints(width: CGFloat, height: CGFloat) -> [NSValue] {

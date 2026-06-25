@@ -98,12 +98,34 @@ struct CommentsReviewSidebar: View {
     @State private var showsSearch = false
     @State private var showsFilters = false
     @State private var showsAdvancedFilters = false
+    @FocusState private var isCommentSearchFocused: Bool
 
     private var groupedComments: [(pageIndex: Int, items: [AnnotationSnapshot])] {
         let grouped = Dictionary(grouping: appState.topLevelComments, by: \.pageIndex)
         return grouped
             .map { (pageIndex: $0.key, items: $0.value) }
             .sorted { $0.pageIndex < $1.pageIndex }
+    }
+
+    private var visibleCommentCount: Int {
+        appState.topLevelComments.reduce(0) { partial, item in
+            partial + 1 + (appState.repliesByParent[item.id]?.count ?? 0)
+        }
+    }
+
+    private var isFilteringComments: Bool {
+        hasActiveCommentSearch || hasActiveCommentFilters
+    }
+
+    private var hasActiveCommentSearch: Bool {
+        !appState.commentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasActiveCommentFilters: Bool {
+        appState.commentFilter != .all
+            || appState.selectedKindFilter != nil
+            || appState.selectedAuthorFilter != "All Authors"
+            || appState.selectedStatusFilter != ReviewState.allStatuses
     }
 
     var body: some View {
@@ -132,7 +154,7 @@ struct CommentsReviewSidebar: View {
                 .font(.headline)
                 .lineLimit(1)
 
-            Text("\(appState.annotations.count)")
+            Text("\(visibleCommentCount)")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -141,18 +163,31 @@ struct CommentsReviewSidebar: View {
 
             Button {
                 showsSearch.toggle()
+                if showsSearch {
+                    focusCommentSearch()
+                } else {
+                    isCommentSearchFocused = false
+                }
             } label: {
-                Label("Search Comments", systemImage: showsSearch ? "magnifyingglass.circle.fill" : "magnifyingglass")
+                Label(
+                    "Search Comments",
+                    systemImage: (showsSearch || hasActiveCommentSearch) ? "magnifyingglass.circle.fill" : "magnifyingglass"
+                )
             }
             .labelStyle(.iconOnly)
+            .foregroundStyle(hasActiveCommentSearch ? InterfacePalette.actionText(for: colorScheme) : InterfacePalette.secondaryText(for: colorScheme))
             .help("Search Comments")
 
             Button {
                 showsFilters.toggle()
             } label: {
-                Label("Filter Comments", systemImage: showsFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                Label(
+                    "Filter Comments",
+                    systemImage: (showsFilters || hasActiveCommentFilters) ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                )
             }
             .labelStyle(.iconOnly)
+            .foregroundStyle(hasActiveCommentFilters ? InterfacePalette.actionText(for: colorScheme) : InterfacePalette.secondaryText(for: colorScheme))
             .help("Filter Comments")
         }
         .padding(.horizontal, 10)
@@ -184,6 +219,7 @@ struct CommentsReviewSidebar: View {
             }
         }
         .buttonStyle(.plain)
+        .disabled(!appState.hasTextSelection)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .help("Select text, then add a comment")
@@ -194,6 +230,10 @@ struct CommentsReviewSidebar: View {
             if showsSearch {
                 TextField("Search comments", text: $appState.commentSearchText)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isCommentSearchFocused)
+                    .onAppear {
+                        focusCommentSearch()
+                    }
             }
 
             if showsFilters {
@@ -238,20 +278,72 @@ struct CommentsReviewSidebar: View {
         .padding(10)
     }
 
+    private func focusCommentSearch() {
+        DispatchQueue.main.async {
+            isCommentSearchFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isCommentSearchFocused = true
+        }
+    }
+
     private var commentList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(groupedComments, id: \.pageIndex) { group in
-                    PageCommentGroup(
-                        pageIndex: group.pageIndex,
-                        items: group.items,
-                        repliesByParent: appState.repliesByParent,
-                        showsPageHeader: appState.pageCount > 1
-                    )
+        Group {
+            if groupedComments.isEmpty {
+                CommentsEmptyState(isFiltering: isFilteringComments)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(groupedComments, id: \.pageIndex) { group in
+                            PageCommentGroup(
+                                pageIndex: group.pageIndex,
+                                items: group.items,
+                                repliesByParent: appState.repliesByParent,
+                                showsPageHeader: appState.pageCount > 1,
+                                isFiltering: isFilteringComments
+                            )
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
             }
-            .padding(.vertical, 4)
         }
+    }
+}
+
+private struct CommentsEmptyState: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+    let isFiltering: Bool
+
+    var body: some View {
+        VStack(spacing: 9) {
+            Image(systemName: isFiltering ? "line.3.horizontal.decrease.circle" : "text.bubble")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(InterfacePalette.quietText(for: colorScheme))
+
+            Text(isFiltering ? "No matching comments" : "No comments yet")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+
+            Text(isFiltering ? "Adjust the search or filters to show more comments." : "Select text in the PDF, then add a comment.")
+                .font(.caption)
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if isFiltering {
+                Button {
+                    appState.clearCommentFilters()
+                } label: {
+                    Label("Clear Filters", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -262,40 +354,37 @@ private struct PageCommentGroup: View {
     let items: [AnnotationSnapshot]
     let repliesByParent: [String: [AnnotationSnapshot]]
     let showsPageHeader: Bool
+    let isFiltering: Bool
 
     private var isCollapsed: Bool {
-        showsPageHeader && appState.collapsedPageIndexes.contains(pageIndex)
+        showsPageHeader && !isFiltering && appState.collapsedPageIndexes.contains(pageIndex)
+    }
+
+    private var visibleItemCount: Int {
+        items.reduce(0) { partial, item in
+            partial + 1 + (repliesByParent[item.id]?.count ?? 0)
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsPageHeader {
-                Button {
-                    if isCollapsed {
-                        appState.collapsedPageIndexes.remove(pageIndex)
-                    } else {
-                        appState.collapsedPageIndexes.insert(pageIndex)
+                if isFiltering {
+                    pageHeader
+                        .help("Filtered results are expanded")
+                } else {
+                    Button {
+                        if isCollapsed {
+                            appState.collapsedPageIndexes.remove(pageIndex)
+                        } else {
+                            appState.collapsedPageIndexes.insert(pageIndex)
+                        }
+                    } label: {
+                        pageHeader
                     }
-                } label: {
-                    HStack {
-                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                            .font(.caption2.weight(.semibold))
-                            .frame(width: 12)
-                            .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
-                        Text("Page \(pageIndex + 1)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
-                        Spacer()
-                        Text("\(items.count)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 7)
-                    .padding(.bottom, 5)
+                    .buttonStyle(.plain)
+                    .help(isCollapsed ? "Expand Page Comments" : "Collapse Page Comments")
                 }
-                .buttonStyle(.plain)
-                .help(isCollapsed ? "Expand Page Comments" : "Collapse Page Comments")
             }
 
             if !isCollapsed {
@@ -306,6 +395,25 @@ private struct PageCommentGroup: View {
                 }
             }
         }
+    }
+
+    private var pageHeader: some View {
+        HStack {
+            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                .font(.caption2.weight(.semibold))
+                .frame(width: 12)
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+            Text("Page \(pageIndex + 1)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+            Spacer()
+            Text("\(visibleItemCount)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 7)
+        .padding(.bottom, 5)
     }
 }
 

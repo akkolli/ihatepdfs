@@ -6,6 +6,7 @@ import SwiftUI
 final class AcademicPDFView: PDFView {
     var onAnnotationClick: ((PDFAnnotation, PDFPage) -> Void)?
     var onPlacementClick: ((PDFPage, CGPoint) -> Void)?
+    var onCancelPlacement: (() -> Void)?
     var onSelectionComment: (() -> Void)?
     var onPreviousPageKey: (() -> Void)?
     var onNextPageKey: (() -> Void)?
@@ -91,6 +92,11 @@ final class AcademicPDFView: PDFView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, placementTool != nil {
+            onCancelPlacement?()
+            return
+        }
+
         let pageNavigationModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
         guard event.modifierFlags.intersection(pageNavigationModifiers).isEmpty else {
             super.keyDown(with: event)
@@ -156,29 +162,45 @@ final class AcademicPDFView: PDFView {
 
     private func editableAnnotation(on page: PDFPage, at point: CGPoint) -> PDFAnnotation? {
         if let direct = page.annotation(at: point),
-           let editable = editableParent(for: direct, on: page) {
+           let editable = editableParent(for: direct, on: page),
+           isInteractionPoint(point, on: direct, editable: editable) {
             return editable
         }
 
         for annotation in page.annotations.reversed() {
             guard let editable = editableParent(for: annotation, on: page) else { continue }
 
-            if annotation.bounds.insetBy(dx: -8, dy: -8).contains(point) {
-                return editable
-            }
-
-            if let popup = editable.popup,
-               popup.bounds.insetBy(dx: -10, dy: -10).contains(point) {
-                return editable
-            }
-
-            if isTextMarkup(editable),
-               textMarkupInteractionBounds(for: editable, on: page).contains(point) {
+            if isInteractionPoint(point, on: annotation, editable: editable) {
                 return editable
             }
         }
 
         return nil
+    }
+
+    private func isInteractionPoint(
+        _ point: CGPoint,
+        on annotation: PDFAnnotation,
+        editable: PDFAnnotation
+    ) -> Bool {
+        if AnnotationKeys.annotation(annotation, hasSubtype: .popup) {
+            return annotation.bounds.insetBy(dx: -10, dy: -10).contains(point)
+        }
+
+        if isTextMarkup(editable) {
+            return AnnotationHitTesting.containsTextMarkupPoint(point, in: editable)
+        }
+
+        if annotation.bounds.insetBy(dx: -8, dy: -8).contains(point) {
+            return true
+        }
+
+        if let popup = editable.popup,
+           popup.bounds.insetBy(dx: -10, dy: -10).contains(point) {
+            return true
+        }
+
+        return false
     }
 
     private func editableParent(for annotation: PDFAnnotation, on page: PDFPage) -> PDFAnnotation? {
@@ -228,20 +250,6 @@ final class AcademicPDFView: PDFView {
             || AnnotationKeys.annotation(annotation, hasSubtype: .underline)
     }
 
-    private func textMarkupInteractionBounds(
-        for annotation: PDFAnnotation,
-        on page: PDFPage
-    ) -> CGRect {
-        var bounds = annotation.bounds.insetBy(dx: -48, dy: -48)
-
-        if let popup = annotation.popup {
-            bounds = bounds.union(popup.bounds.insetBy(dx: -16, dy: -16))
-        }
-
-        let pageBounds = page.bounds(for: displayBox).insetBy(dx: -64, dy: -64)
-        return bounds.intersection(pageBounds)
-    }
-
     private func closeNativePopups(on page: PDFPage) {
         for annotation in page.annotations {
             if AnnotationKeys.annotation(annotation, hasSubtype: .popup) {
@@ -253,8 +261,16 @@ final class AcademicPDFView: PDFView {
     }
 
     private func isEditableAcademicAnnotation(_ annotation: PDFAnnotation) -> Bool {
-        AnnotationKeys.annotation(annotation, hasSubtype: .highlight)
-            || AnnotationKeys.annotation(annotation, hasSubtype: .underline)
+        if AnnotationKeys.annotation(annotation, hasSubtype: .highlight) {
+            let isSelectionComment = annotation.value(forAnnotationKey: AnnotationKeys.appKind) as? String
+                == AnnotationKeys.appKindComment
+            let hasCommentText = !AnnotationKeys.commentText(for: annotation)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+            return isSelectionComment || hasCommentText
+        }
+
+        return AnnotationKeys.annotation(annotation, hasSubtype: .underline)
             || AnnotationKeys.annotation(annotation, hasSubtype: .text)
             || AnnotationKeys.annotation(annotation, hasSubtype: .freeText)
     }
@@ -277,6 +293,11 @@ struct PDFKitRepresentedView: NSViewRepresentable {
         view.onPlacementClick = { page, point in
             Task { @MainActor in
                 appState.placePendingAnnotation(on: page, near: point)
+            }
+        }
+        view.onCancelPlacement = {
+            Task { @MainActor in
+                appState.cancelPlacementTool()
             }
         }
         view.onSelectionComment = {
@@ -364,6 +385,45 @@ struct PDFKitRepresentedView: NSViewRepresentable {
                 of: view,
                 preferredEdge: preferredEdge(for: anchor, in: view)
             )
+            focusCommentEditor(in: controller.view)
+        }
+
+        private func focusCommentEditor(in view: NSView) {
+            Self.focusFirstTextView(in: view)
+
+            DispatchQueue.main.async { [weak view] in
+                guard let view else { return }
+                Self.focusFirstTextView(in: view)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak view] in
+                guard let view else { return }
+                Self.focusFirstTextView(in: view)
+            }
+        }
+
+        private static func focusFirstTextView(in view: NSView) {
+            view.layoutSubtreeIfNeeded()
+            guard let textView = firstTextView(in: view) else { return }
+
+            textView.window?.makeFirstResponder(textView)
+            textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
+            textView.insertionPointColor = .labelColor
+            textView.needsDisplay = true
+        }
+
+        private static func firstTextView(in view: NSView) -> NSTextView? {
+            if let textView = view as? NSTextView {
+                return textView
+            }
+
+            for subview in view.subviews {
+                if let textView = firstTextView(in: subview) {
+                    return textView
+                }
+            }
+
+            return nil
         }
 
         private func dismissCurrent(commit: Bool) {

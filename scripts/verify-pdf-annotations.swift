@@ -18,8 +18,9 @@ enum VerificationError: Error, CustomStringConvertible {
     case missingName(page: Int, index: Int, key: String)
     case missingString(page: Int, index: Int, key: String)
     case missingArray(page: Int, index: Int, key: String)
-    case missingPopup(page: Int, index: Int, subtype: String)
     case missingPopupParent(page: Int, index: Int)
+    case unexpectedMarkupPopup(page: Int, index: Int, subtype: String)
+    case unexpectedPopupLink(page: Int, index: Int, subtype: String)
     case missingExpectedSubtype(String)
 
     var description: String {
@@ -36,10 +37,12 @@ enum VerificationError: Error, CustomStringConvertible {
             return "Annotation \(index) on page \(page) is missing string key /\(key)"
         case .missingArray(let page, let index, let key):
             return "Annotation \(index) on page \(page) is missing array key /\(key)"
-        case .missingPopup(let page, let index, let subtype):
-            return "\(subtype) annotation \(index) on page \(page) is missing a /Popup dictionary"
         case .missingPopupParent(let page, let index):
             return "Popup annotation \(index) on page \(page) is missing a /Parent dictionary"
+        case .unexpectedMarkupPopup(let page, let index, let subtype):
+            return "Popup annotation \(index) on page \(page) points at a /\(subtype) markup annotation; markup comments should export through /Contents"
+        case .unexpectedPopupLink(let page, let index, let subtype):
+            return "\(subtype) annotation \(index) on page \(page) should store comments in /Contents, not a /Popup link"
         case .missingExpectedSubtype(let subtype):
             return "Expected at least one /\(subtype) annotation"
         }
@@ -85,7 +88,7 @@ for pageNumber in 1...document.numberOfPages {
         switch subtype {
         case "Highlight":
             try requireMarkupKeys(in: annotation, page: pageNumber, index: annotationIndex)
-            try requirePopup(in: annotation, page: pageNumber, index: annotationIndex, subtype: "Highlight")
+            try rejectPopupLink(in: annotation, subtype: subtype, page: pageNumber, index: annotationIndex)
             if hasString(in: annotation, key: "IHatePDFsKind") {
                 try requireString(in: annotation, key: "IHatePDFsKind", page: pageNumber, index: annotationIndex)
                 summary.selectedTextComments += 1
@@ -95,7 +98,7 @@ for pageNumber in 1...document.numberOfPages {
         case "Underline":
             summary.underlines += 1
             try requireMarkupKeys(in: annotation, page: pageNumber, index: annotationIndex)
-            try requirePopup(in: annotation, page: pageNumber, index: annotationIndex, subtype: "Underline")
+            try rejectPopupLink(in: annotation, subtype: subtype, page: pageNumber, index: annotationIndex)
         case "Text":
             try requireTextKeys(in: annotation, page: pageNumber, index: annotationIndex)
 
@@ -104,7 +107,6 @@ for pageNumber in 1...document.numberOfPages {
                 try requireString(in: annotation, key: "IRT", page: pageNumber, index: annotationIndex)
                 try requireString(in: annotation, key: "RT", page: pageNumber, index: annotationIndex)
             } else {
-                try requirePopup(in: annotation, page: pageNumber, index: annotationIndex, subtype: "Text")
                 summary.textNotes += 1
             }
         case "FreeText":
@@ -118,8 +120,23 @@ for pageNumber in 1...document.numberOfPages {
         case "Popup":
             summary.popups += 1
             var parentDictionary: CGPDFDictionaryRef?
-            guard CGPDFDictionaryGetDictionary(annotation, "Parent", &parentDictionary) else {
+            guard CGPDFDictionaryGetDictionary(annotation, "Parent", &parentDictionary),
+                  let parentDictionary
+            else {
                 throw VerificationError.missingPopupParent(page: pageNumber, index: annotationIndex)
+            }
+            let parentSubtype = try nameValue(
+                in: parentDictionary,
+                key: "Subtype",
+                page: pageNumber,
+                index: annotationIndex
+            )
+            if parentSubtype == "Highlight" || parentSubtype == "Underline" {
+                throw VerificationError.unexpectedMarkupPopup(
+                    page: pageNumber,
+                    index: annotationIndex,
+                    subtype: parentSubtype
+                )
             }
         default:
             continue
@@ -145,10 +162,6 @@ guard summary.replies > 0 else {
 guard summary.freeText > 0 else {
     throw VerificationError.missingExpectedSubtype("FreeText")
 }
-guard summary.popups >= 4 else {
-    throw VerificationError.missingExpectedSubtype("Popup")
-}
-
 print("Verified raw PDF annotation dictionaries in \(inputURL.path): \(summary.highlights) highlight, \(summary.selectedTextComments) selected-text comment, \(summary.underlines) underline, \(summary.textNotes) text note, \(summary.replies) reply, \(summary.freeText) free-text, \(summary.popups) popups.")
 
 func annotationDictionary(
@@ -251,6 +264,20 @@ func requireMarkupKeys(
     try requireString(in: dictionary, key: "M", page: page, index: index)
 }
 
+func rejectPopupLink(
+    in dictionary: CGPDFDictionaryRef,
+    subtype: String,
+    page: Int,
+    index: Int
+) throws {
+    var popupDictionary: CGPDFDictionaryRef?
+    guard CGPDFDictionaryGetDictionary(dictionary, "Popup", &popupDictionary) else {
+        return
+    }
+
+    throw VerificationError.unexpectedPopupLink(page: page, index: index, subtype: subtype)
+}
+
 func requireTextKeys(
     in dictionary: CGPDFDictionaryRef,
     page: Int,
@@ -261,23 +288,4 @@ func requireTextKeys(
     try requireArray(in: dictionary, key: "C", page: page, index: index)
     try requireString(in: dictionary, key: "T", page: page, index: index)
     try requireString(in: dictionary, key: "M", page: page, index: index)
-}
-
-func requirePopup(
-    in dictionary: CGPDFDictionaryRef,
-    page: Int,
-    index: Int,
-    subtype: String
-) throws {
-    var popupDictionary: CGPDFDictionaryRef?
-    guard CGPDFDictionaryGetDictionary(dictionary, "Popup", &popupDictionary),
-          let popupDictionary
-    else {
-        throw VerificationError.missingPopup(page: page, index: index, subtype: subtype)
-    }
-
-    let popupSubtype = try nameValue(in: popupDictionary, key: "Subtype", page: page, index: index)
-    guard popupSubtype == "Popup" else {
-        throw VerificationError.missingPopup(page: page, index: index, subtype: subtype)
-    }
 }

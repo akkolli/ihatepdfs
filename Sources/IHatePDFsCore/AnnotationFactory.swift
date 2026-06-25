@@ -4,16 +4,16 @@ import PDFKit
 
 public enum AcademicAnnotationPalette {
     public static let comment = NSColor(
-        calibratedRed: 0.88,
-        green: 0.72,
-        blue: 0.46,
-        alpha: 0.10
+        calibratedRed: 0.98,
+        green: 0.64,
+        blue: 0.16,
+        alpha: 0.30
     )
     public static let highlight = NSColor(
-        calibratedRed: 0.88,
-        green: 0.72,
-        blue: 0.46,
-        alpha: 0.24
+        calibratedRed: 1.0,
+        green: 0.78,
+        blue: 0.0,
+        alpha: 0.52
     )
     public static let underline = NSColor(
         calibratedRed: 0.48,
@@ -58,10 +58,13 @@ public enum MarkupAnnotationStyle {
         }
     }
 
-    var color: NSColor {
+    func color(
+        highlightColor: NSColor = AcademicAnnotationPalette.highlight,
+        commentColor: NSColor = AcademicAnnotationPalette.comment
+    ) -> NSColor {
         switch self {
-        case .comment: return AcademicAnnotationPalette.comment
-        case .highlight: return AcademicAnnotationPalette.highlight
+        case .comment: return commentColor
+        case .highlight: return highlightColor
         case .underline: return AcademicAnnotationPalette.underline
         }
     }
@@ -95,6 +98,8 @@ public enum AnnotationFactory {
         style: MarkupAnnotationStyle,
         comment: String,
         author: String,
+        highlightColor: NSColor = AcademicAnnotationPalette.highlight,
+        commentColor: NSColor = AcademicAnnotationPalette.comment,
         date: Date = Date()
     ) -> [AnnotationInsertion] {
         let lineSelections = selection.selectionsByLine()
@@ -120,7 +125,7 @@ public enum AnnotationFactory {
             }
             let annotation = PDFAnnotation(bounds: unionRect, forType: style.subtype, withProperties: nil)
             annotation.markupType = style.markupType
-            annotation.color = style.color
+            annotation.color = style.color(highlightColor: highlightColor, commentColor: commentColor)
             annotation.quadrilateralPoints = group.rects.flatMap { rect in
                 quadPoints(for: rect, relativeTo: unionRect)
             }
@@ -266,7 +271,9 @@ public enum AnnotationFactory {
         date: Date
     ) {
         AnnotationKeys.setCommentText(comment, for: annotation)
-        annotation.contents = comment
+        annotation.contents = comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil
+            : comment
         annotation.userName = author
         annotation.modificationDate = date
         annotation.shouldDisplay = true
@@ -357,6 +364,51 @@ public enum AnnotationFactory {
     @discardableResult
     public static func restoreCommentTextForExport(_ annotation: PDFAnnotation) -> Bool {
         let contents = AnnotationKeys.commentText(for: annotation)
+        return restoreCommentText(contents, forExportIn: annotation)
+    }
+
+    @discardableResult
+    public static func prepareForPreviewCompatibleExport(
+        _ annotation: PDFAnnotation,
+        on page: PDFPage
+    ) -> Bool {
+        let contents = AnnotationKeys.commentText(for: annotation)
+        var didChange = restoreCommentText(contents, forExportIn: annotation)
+
+        guard !AnnotationKeys.annotation(annotation, hasSubtype: .freeText) else {
+            return didChange
+        }
+
+        if let popup = annotation.popup {
+            if popup.page != nil {
+                page.removeAnnotation(popup)
+            }
+            annotation.popup = nil
+            didChange = true
+        }
+
+        let linkedPopups = page.annotations.filter { candidate in
+            guard AnnotationKeys.annotation(candidate, hasSubtype: .popup) else { return false }
+            return parentAnnotation(for: candidate) === annotation
+        }
+
+        for popup in linkedPopups {
+            page.removeAnnotation(popup)
+            didChange = true
+        }
+
+        if restoreCommentText(contents, forExportIn: annotation) {
+            didChange = true
+        }
+
+        return didChange
+    }
+
+    @discardableResult
+    private static func restoreCommentText(
+        _ contents: String,
+        forExportIn annotation: PDFAnnotation
+    ) -> Bool {
         let exportedContents = contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? nil
             : contents
