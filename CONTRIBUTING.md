@@ -4,7 +4,7 @@ I Hate PDFs is a native macOS app for local PDF reading and annotation. Contribu
 
 By contributing, you agree that your contribution is licensed under GNU General Public License version 2 only.
 
-Vibe coded pull requests are welcome. This is a vibe coded repo, but vibe coded does not mean unreviewed: every change must be understandable, documented, tested at the right level, and held to the same strict QA bar as hand-written code.
+This project is vibe coded and maintained with AI agents. Feature requests are welcome; the maintainer will get to them as time allows. Agent-assisted pull requests are welcome too, but vibe coded does not mean unreviewed: every change must be understandable, documented, tested at the right level, and held to the same strict QA bar as hand-written code.
 
 ## Before You Start
 

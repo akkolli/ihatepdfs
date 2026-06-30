@@ -15,6 +15,7 @@
 - Consolidated engineering guidance into contributing docs and App Store packaging into release docs.
 - Documented that vibe coded pull requests are welcome when they include clear change documentation, strict QA, and UI screenshots or recordings when relevant.
 - Documented `https://www.akkolli.net/ihatepdfs` as the project website and `akshaykolli@hotmail.com` as the support contact.
+- Clarified that the project is vibe coded and maintained with AI agents, and that feature requests and agent-assisted PRs are welcome under the QA guidelines.
 
 ## Version 0.4.0 (build 6) - 2026-06-25
 

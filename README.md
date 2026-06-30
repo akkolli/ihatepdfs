@@ -52,24 +52,14 @@ The direct-download DMG is separate from the Mac App Store build. The App Store 
 
 ## Features
 
-- Open local `.pdf` files from disk.
-- Drag a PDF onto the empty app window to open it.
-- Read with smooth PDFKit scrolling, Retina rendering, zoom, fit-to-width, fit-to-page, and page navigation.
-- Search selectable text PDFs from a compact toolbar control.
-- Start each opened PDF in a focused single-pane reading layout, with the document fit to the available width and sidebars hidden until requested.
-- Adapt the reader layout across compact, regular, and wide Mac windows while preserving usable PDF width.
-- Configure highlight and comment colors, including opacity, from Settings.
-- Reopen recent PDFs from the empty window or File > Open Recent.
-- Close the current PDF back to the empty window without closing the app window.
-- Create standalone highlights from selected text.
-- Create selected-text comments and underline comments.
-- Create free-text annotations directly on the page.
-- Press Return to save comments and replies, or Shift-Return for a new line.
-- Click commented or underlined text in the PDF to reopen and edit the comment in place.
-- Save annotations directly into the original PDF after an overwrite warning.
-- Save As a new annotated copy.
-- Share the annotated PDF through the native macOS share picker.
-- Review annotations in a comments sidebar with page grouping, search, filters, replies, edit/delete, and click-to-navigate.
+- Incredibly small app size: v0.4 ships as a 957 KB direct-download DMG, with a 253 KB Apple Silicon archive and a 287 KB Intel archive.
+- Extremely fast native PDF reading: built on SwiftUI, AppKit, and PDFKit instead of a bundled browser, runtime, database, or PDF engine.
+- Power- and size-efficient by design: minimal assets, no bundled services, and no background sync workload.
+- Local-first privacy: opens user-selected PDFs from disk and does not require accounts, analytics, tracking, or cloud upload.
+- No internet auto-updater: releases are explicit downloads, so the app is not running update checks in the background.
+- No AI features: no summaries, remote prompts, embeddings, model downloads, or document analysis.
+- Clean review system: focused highlighting, commenting, replies, bookmarks, search, and sidebars that stay hidden until needed.
+- Standards-compatible annotations: comments and highlights are written back into PDFs so they remain useful in common PDF readers.
 
 ## Privacy And Support
 
@@ -159,6 +149,7 @@ Open source contribution policy:
 
 - Contributions are accepted under GPL-2.0-only. See [LICENSE](LICENSE).
 - Vibe coded pull requests are welcome, but they must include clear change documentation, strict QA notes, and screenshots or recordings for UI changes.
+- This project is vibe coded and maintained with AI agents. Feature requests are welcome, and agent-assisted PRs are welcome when they follow the QA and contribution guidelines.
 - Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 - UI pull requests must include before/after screenshots or a short screen recording.
 - Screenshots, recordings, and committed media files included with a pull request must each be under 1 MB.
