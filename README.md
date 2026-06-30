@@ -1,11 +1,33 @@
-# I Hate PDFs
+<p align="center">
+  <img src="ihatepdf-profile-transparent.png" alt="I Hate PDFs app icon" width="128">
+</p>
 
-[![Latest release](https://img.shields.io/github/v/release/akkolli/ihatepdfs?label=release)](https://github.com/akkolli/ihatepdfs/releases/latest)
-[![License: GPL v2](https://img.shields.io/badge/license-GPL--2.0--only-blue.svg)](LICENSE)
-[![Platform: macOS 13+](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg)](#build-from-source)
-[![Swift native](https://img.shields.io/badge/Swift-native-orange.svg)](#development)
-[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Media size policy](https://github.com/akkolli/ihatepdfs/actions/workflows/media-size.yml/badge.svg)](https://github.com/akkolli/ihatepdfs/actions/workflows/media-size.yml)
+<h1 align="center">I Hate PDFs</h1>
+
+<p align="center">
+  <strong>Native macOS PDF reading, highlighting, commenting, and review.</strong><br>
+  Local-first. No accounts. No tracking. No cloud upload.
+</p>
+
+<p align="center">
+  <a href="#build-from-source"><img alt="Platform: macOS 13+" src="https://img.shields.io/badge/platform-macOS%2013%2B-111827?logo=apple&logoColor=white"></a>
+  <a href="LICENSE"><img alt="License: GPL v2 only" src="https://img.shields.io/badge/license-GPL--2.0--only-2563EB"></a>
+  <a href="https://github.com/akkolli/ihatepdfs/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/akkolli/ihatepdfs?label=version&color=0A7AFF"></a>
+  <a href="#development"><img alt="Language: Swift" src="https://img.shields.io/badge/language-Swift-F05138?logo=swift&logoColor=white"></a>
+  <a href="CONTRIBUTING.md"><img alt="Status: active development" src="https://img.shields.io/badge/status-active%20development-16A34A"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/akkolli/ihatepdfs/releases/latest">Download</a>
+  ·
+  <a href="https://github.com/akkolli/ihatepdfs/issues/new?template=bug_report.md">Report a bug</a>
+  ·
+  <a href="CONTRIBUTING.md">Contribute</a>
+  ·
+  <a href="https://www.akkolli.net/ihatepdfs/privacy">Privacy</a>
+</p>
+
+---
 
 I Hate PDFs is a small native macOS PDF reader for local reading, highlighting, commenting, and review. It uses SwiftUI, AppKit, and PDFKit, keeps documents on your Mac, and avoids accounts, tracking, and cloud upload.
 
