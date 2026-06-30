@@ -14,11 +14,19 @@ if [[ "$BUILD_APP" != "0" || ! -d "$APP_DIR" ]]; then
 fi
 
 rm -f "$DMG_PATH"
-hdiutil create \
-  -volname "$APP_NAME" \
-  -srcfolder "$APP_DIR" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH"
+if diskutil image create from --help >/dev/null 2>&1; then
+  diskutil image create from \
+    --format UDZO \
+    --volumeName "$APP_NAME" \
+    "$APP_DIR" \
+    "$DMG_PATH"
+else
+  hdiutil create \
+    -volname "$APP_NAME" \
+    -srcfolder "$APP_DIR" \
+    -ov \
+    -format UDZO \
+    "$DMG_PATH"
+fi
 
 echo "Created $DMG_PATH"

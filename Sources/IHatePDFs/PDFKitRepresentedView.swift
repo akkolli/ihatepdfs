@@ -8,6 +8,10 @@ final class AcademicPDFView: PDFView {
     var onPlacementClick: ((PDFPage, CGPoint) -> Void)?
     var onCancelPlacement: (() -> Void)?
     var onSelectionComment: (() -> Void)?
+    var onHighlighterSelection: (() -> Void)?
+    var onToggleHighlighterKey: (() -> Void)?
+    var onUnderlineSelectionKey: (() -> Void)?
+    var onCommentSelectionKey: (() -> Void)?
     var onPreviousPageKey: (() -> Void)?
     var onNextPageKey: (() -> Void)?
     var placementTool: AnnotationPlacementTool? {
@@ -16,9 +20,24 @@ final class AcademicPDFView: PDFView {
             window?.invalidateCursorRects(for: self)
         }
     }
+    var isHighlighterModeActive = false {
+        didSet {
+            guard oldValue != isHighlighterModeActive else { return }
+            window?.invalidateCursorRects(for: self)
+            if mouseIsInside {
+                applyToolCursorIfNeeded()
+            }
+        }
+    }
     private var handledAnnotationMouseDown = false
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        backgroundColor = NSColor.underPageBackgroundColor
+        needsDisplay = true
+    }
 
     override func mouseDown(with event: NSEvent) {
         handledAnnotationMouseDown = false
@@ -27,7 +46,6 @@ final class AcademicPDFView: PDFView {
         if let page = page(for: point, nearest: false) ?? page(for: point, nearest: true) {
             closeNativePopups(on: page)
             let pagePoint = convert(point, to: page)
-
             if placementTool != nil {
                 onPlacementClick?(page, pagePoint)
                 return
@@ -65,6 +83,14 @@ final class AcademicPDFView: PDFView {
 
         super.mouseUp(with: event)
 
+        if isHighlighterModeActive, hasCommentableSelection {
+            DispatchQueue.main.async { [weak self] in
+                guard self?.hasCommentableSelection == true else { return }
+                self?.onHighlighterSelection?()
+            }
+            return
+        }
+
         guard let page else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -97,6 +123,24 @@ final class AcademicPDFView: PDFView {
             return
         }
 
+        if !event.isARepeat,
+           event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+           let key = event.charactersIgnoringModifiers?.lowercased() {
+            switch key {
+            case "h":
+                onToggleHighlighterKey?()
+                return
+            case "u":
+                onUnderlineSelectionKey?()
+                return
+            case "c":
+                onCommentSelectionKey?()
+                return
+            default:
+                break
+            }
+        }
+
         let pageNavigationModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
         guard event.modifierFlags.intersection(pageNavigationModifiers).isEmpty else {
             super.keyDown(with: event)
@@ -116,13 +160,180 @@ final class AcademicPDFView: PDFView {
     override func resetCursorRects() {
         super.resetCursorRects()
 
-        if placementTool != nil {
+        if isHighlighterModeActive {
+            addCursorRect(bounds, cursor: Self.highlighterCursor)
+        } else if placementTool != nil {
             addCursorRect(bounds, cursor: .crosshair)
         }
     }
 
+    override func cursorUpdate(with event: NSEvent) {
+        if applyToolCursorIfNeeded() {
+            return
+        }
+        super.cursorUpdate(with: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        applyToolCursorIfNeeded()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        super.mouseDragged(with: event)
+        applyToolCursorIfNeeded()
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         commentMenu(from: super.menu(for: event))
+    }
+
+    @discardableResult
+    private func applyToolCursorIfNeeded() -> Bool {
+        if isHighlighterModeActive {
+            Self.highlighterCursor.set()
+            return true
+        }
+        if placementTool != nil {
+            NSCursor.crosshair.set()
+            return true
+        }
+        return false
+    }
+
+    private var mouseIsInside: Bool {
+        guard let window else { return false }
+        return bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+    }
+
+    private static let highlighterCursor: NSCursor = {
+        let size = NSSize(width: 36, height: 36)
+        let image = highResolutionCursorImage(size: size) {
+            NSGraphicsContext.current?.imageInterpolation = .high
+            NSGraphicsContext.current?.shouldAntialias = true
+
+            let outline = NSColor.black.withAlphaComponent(0.58)
+            let bodyTint = NSColor(red: 1.0, green: 0.86, blue: 0.28, alpha: 0.98)
+            let bodyShade = NSColor(red: 1.0, green: 0.58, blue: 0.12, alpha: 0.98)
+            let nibColor = NSColor(red: 0.16, green: 0.07, blue: 0.02, alpha: 0.96)
+
+            let highlightTrail = NSBezierPath(roundedRect: NSRect(x: 4.5, y: 3.6, width: 17.5, height: 5.2), xRadius: 2.6, yRadius: 2.6)
+            NSColor(red: 1.0, green: 0.93, blue: 0.28, alpha: 0.34).setFill()
+            highlightTrail.fill()
+
+            let shadow = NSShadow()
+            shadow.shadowOffset = NSSize(width: 0.7, height: -1.1)
+            shadow.shadowBlurRadius = 2.4
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.24)
+
+            let body = NSBezierPath()
+            body.move(to: NSPoint(x: 10.4, y: 9.2))
+            body.line(to: NSPoint(x: 21.9, y: 23.5))
+            body.curve(
+                to: NSPoint(x: 25.3, y: 23.8),
+                controlPoint1: NSPoint(x: 22.8, y: 24.4),
+                controlPoint2: NSPoint(x: 24.2, y: 24.5)
+            )
+            body.line(to: NSPoint(x: 28.8, y: 20.8))
+            body.curve(
+                to: NSPoint(x: 28.1, y: 17.5),
+                controlPoint1: NSPoint(x: 29.7, y: 20.0),
+                controlPoint2: NSPoint(x: 29.3, y: 18.4)
+            )
+            body.line(to: NSPoint(x: 15.2, y: 4.1))
+            body.curve(
+                to: NSPoint(x: 11.7, y: 4.3),
+                controlPoint1: NSPoint(x: 13.9, y: 3.1),
+                controlPoint2: NSPoint(x: 12.4, y: 3.0)
+            )
+            body.line(to: NSPoint(x: 8.7, y: 6.8))
+            body.curve(
+                to: NSPoint(x: 10.4, y: 9.2),
+                controlPoint1: NSPoint(x: 8.9, y: 7.7),
+                controlPoint2: NSPoint(x: 9.5, y: 8.6)
+            )
+            body.close()
+            body.lineJoinStyle = .round
+
+            NSGraphicsContext.saveGraphicsState()
+            shadow.set()
+            NSGradient(colors: [bodyTint, bodyShade])?.draw(in: body, angle: 38)
+            NSGraphicsContext.restoreGraphicsState()
+
+            outline.setStroke()
+            body.lineWidth = 1.05
+            body.stroke()
+
+            let grip = NSBezierPath()
+            grip.move(to: NSPoint(x: 17.2, y: 10.4))
+            grip.line(to: NSPoint(x: 25.0, y: 18.6))
+            grip.lineWidth = 1.0
+            NSColor(red: 0.58, green: 0.27, blue: 0.02, alpha: 0.22).setStroke()
+            grip.stroke()
+
+            let shine = NSBezierPath()
+            shine.move(to: NSPoint(x: 15.2, y: 9.5))
+            shine.curve(
+                to: NSPoint(x: 25.0, y: 20.7),
+                controlPoint1: NSPoint(x: 18.8, y: 12.6),
+                controlPoint2: NSPoint(x: 22.1, y: 17.8)
+            )
+            shine.lineWidth = 1.05
+            NSColor.white.withAlphaComponent(0.46).setStroke()
+            shine.stroke()
+
+            let nib = NSBezierPath()
+            nib.move(to: NSPoint(x: 5.3, y: 6.0))
+            nib.line(to: NSPoint(x: 10.6, y: 9.2))
+            nib.curve(
+                to: NSPoint(x: 14.4, y: 4.6),
+                controlPoint1: NSPoint(x: 11.8, y: 9.4),
+                controlPoint2: NSPoint(x: 13.6, y: 4.9)
+            )
+            nib.line(to: NSPoint(x: 8.6, y: 3.1))
+            nib.close()
+            nibColor.setFill()
+            nib.fill()
+            outline.setStroke()
+            nib.lineWidth = 0.9
+            nib.stroke()
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: 8, y: 29))
+    }()
+
+    private static func highResolutionCursorImage(
+        size: NSSize,
+        scale: CGFloat = 2,
+        draw: () -> Void
+    ) -> NSImage {
+        let image = NSImage(size: size)
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(size.width * scale),
+            pixelsHigh: Int(size.height * scale),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ),
+        let context = NSGraphicsContext(bitmapImageRep: representation)
+        else {
+            return image
+        }
+
+        representation.size = size
+        let previousContext = NSGraphicsContext.current
+        NSGraphicsContext.current = context
+        NSGraphicsContext.saveGraphicsState()
+        context.cgContext.scaleBy(x: scale, y: scale)
+        draw()
+        NSGraphicsContext.restoreGraphicsState()
+        NSGraphicsContext.current = previousContext
+        image.addRepresentation(representation)
+        return image
     }
 
     private var hasCommentableSelection: Bool {
@@ -305,6 +516,26 @@ struct PDFKitRepresentedView: NSViewRepresentable {
                 appState.addComment()
             }
         }
+        view.onHighlighterSelection = {
+            Task { @MainActor in
+                appState.addHighlightFromHighlighterMode()
+            }
+        }
+        view.onToggleHighlighterKey = {
+            Task { @MainActor in
+                appState.toggleHighlighterMode()
+            }
+        }
+        view.onUnderlineSelectionKey = {
+            Task { @MainActor in
+                appState.addUnderline()
+            }
+        }
+        view.onCommentSelectionKey = {
+            Task { @MainActor in
+                appState.addComment()
+            }
+        }
         view.onPreviousPageKey = {
             Task { @MainActor in
                 appState.goToPreviousPage()
@@ -324,16 +555,27 @@ struct PDFKitRepresentedView: NSViewRepresentable {
             view.document = appState.document
         }
         view.placementTool = appState.placementTool
+        view.isHighlighterModeActive = appState.isHighlighterModeActive
         view.highlightedSelections = appState.searchResults.isEmpty ? nil : appState.searchResults
-        context.coordinator.sync(editor: appState.activeEditor, in: view, appState: appState)
+        context.coordinator.sync(
+            editor: appState.activeEditor,
+            in: view,
+            appState: appState
+        )
     }
 
     @MainActor
     final class Coordinator: NSObject, NSPopoverDelegate {
+        private enum PopoverKind {
+            case comment
+        }
+
         private var popover: NSPopover?
         private var model: CommentPopoverModel?
         private var editorID: UUID?
+        private var popoverKind: PopoverKind?
         private var isClosing = false
+        private var commitsCommentOnClose = true
         private weak var appState: AppState?
 
         func sync(
@@ -343,19 +585,21 @@ struct PDFKitRepresentedView: NSViewRepresentable {
         ) {
             self.appState = appState
 
-            guard let context else {
-                if !isClosing {
-                    dismissCurrent(commit: false)
+            if let context {
+                if popoverKind == .comment,
+                   editorID == context.id,
+                   popover?.isShown == true {
+                    return
                 }
+
+                dismissCurrent(commit: true)
+                show(context, in: view, appState: appState)
                 return
             }
 
-            if editorID == context.id, popover?.isShown == true {
-                return
+            if !isClosing {
+                dismissCurrent(commit: false)
             }
-
-            dismissCurrent(commit: true)
-            show(context, in: view, appState: appState)
         }
 
         private func show(
@@ -377,7 +621,9 @@ struct PDFKitRepresentedView: NSViewRepresentable {
             self.model = model
             self.popover = popover
             self.editorID = context.id
+            self.popoverKind = .comment
             self.isClosing = false
+            self.commitsCommentOnClose = true
 
             let anchor = anchorRect(for: context, in: view)
             popover.show(
@@ -435,6 +681,7 @@ struct PDFKitRepresentedView: NSViewRepresentable {
             if commit {
                 model?.commit()
             }
+            commitsCommentOnClose = commit
 
             if popover.isShown {
                 popover.performClose(nil)
@@ -445,15 +692,19 @@ struct PDFKitRepresentedView: NSViewRepresentable {
 
         func popoverWillClose(_ notification: Notification) {
             isClosing = true
-            model?.commit()
+            if popoverKind == .comment, commitsCommentOnClose {
+                model?.commit()
+            }
         }
 
         func popoverDidClose(_ notification: Notification) {
             let closedEditorID = editorID
+            let closedPopoverKind = popoverKind
             let currentAppState = appState
             cleanup()
 
-            if currentAppState?.activeEditor?.id == closedEditorID {
+            if closedPopoverKind == .comment,
+               currentAppState?.activeEditor?.id == closedEditorID {
                 currentAppState?.activeEditor = nil
             }
         }
@@ -463,7 +714,9 @@ struct PDFKitRepresentedView: NSViewRepresentable {
             popover = nil
             model = nil
             editorID = nil
+            popoverKind = nil
             isClosing = false
+            commitsCommentOnClose = true
         }
 
         private func anchorRect(for context: AnnotationEditorContext, in view: AcademicPDFView) -> NSRect {

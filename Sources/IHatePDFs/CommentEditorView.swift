@@ -45,7 +45,6 @@ final class CommentPopoverModel: ObservableObject {
 struct CommentEditorView: View {
     @ObservedObject var model: CommentPopoverModel
     @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var isCommentFocused: Bool
     private let editorHorizontalInset: CGFloat = 9
     private let editorVerticalInset: CGFloat = 7
 
@@ -58,19 +57,11 @@ struct CommentEditorView: View {
         .padding(12)
         .frame(width: 340)
         .background(.regularMaterial)
-        .onAppear {
-            DispatchQueue.main.async {
-                isCommentFocused = true
-            }
-        }
         .onChange(of: model.text) { _ in
             model.updateDraft()
         }
         .onChange(of: model.author) { _ in
             model.updateDraft()
-        }
-        .commitOnPlainReturn {
-            model.commit()
         }
     }
 
@@ -83,32 +74,23 @@ struct CommentEditorView: View {
             Text(title)
                 .font(.headline)
                 .lineLimit(1)
-
-            Spacer()
-
-            Button {
-                model.commit()
-            } label: {
-                Label("Done", systemImage: "checkmark")
-            }
-            .labelStyle(.iconOnly)
-            .keyboardShortcut(.return, modifiers: [.command])
-            .help("Done")
         }
     }
 
     private var commentField: some View {
         ZStack(alignment: .topLeading) {
-            TextEditor(text: $model.text)
-                .font(.body)
-                .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
-                .scrollContentBackground(.hidden)
-                .focused($isCommentFocused)
+            CommitTextView(
+                text: $model.text,
+                font: NSFont.preferredFont(forTextStyle: .body),
+                onCommit: {
+                    model.commit()
+                }
+            )
                 .padding(.horizontal, editorHorizontalInset)
                 .padding(.vertical, editorVerticalInset)
 
             if model.text.isEmpty {
-                Text("Add comment")
+                Text(placeholderText)
                     .font(.body)
                     .foregroundStyle(InterfacePalette.quietText(for: colorScheme))
                     .padding(.leading, editorHorizontalInset + 7)
@@ -130,6 +112,9 @@ struct CommentEditorView: View {
             TextField("Author", text: $model.author)
                 .textFieldStyle(.plain)
                 .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                .onSubmit {
+                    model.commit()
+                }
                 .padding(.horizontal, 7)
                 .frame(height: 28)
                 .background(InterfacePalette.fieldFill(for: colorScheme))
@@ -143,7 +128,8 @@ struct CommentEditorView: View {
 
             Spacer()
 
-            if !model.context.isNewAnnotation,
+            if model.context.allowsReply,
+               !model.context.isNewAnnotation,
                model.context.primaryAnnotation != nil {
                 Button {
                     model.reply()
@@ -157,20 +143,36 @@ struct CommentEditorView: View {
             }
 
             if model.context.allowsDelete {
-                Button(role: .destructive) {
-                    model.delete()
-                } label: {
-                    Label("Delete Annotation", systemImage: "trash")
+                if model.context.isNewAnnotation {
+                    Button {
+                        model.delete()
+                    } label: {
+                        Label("Cancel", systemImage: "xmark")
+                    }
+                    .labelStyle(.iconOnly)
+                    .keyboardShortcut(.cancelAction)
+                    .frame(width: 34)
+                    .help("Cancel")
+                } else {
+                    Button(role: .destructive) {
+                        model.delete()
+                    } label: {
+                        Label("Delete Annotation", systemImage: "trash")
+                    }
+                    .labelStyle(.iconOnly)
+                    .frame(width: 34)
+                    .help("Delete Annotation")
                 }
-                .labelStyle(.iconOnly)
-                .frame(width: 34)
-                .help("Delete Annotation")
             }
         }
     }
 
     private var title: String {
         model.context.title.replacingOccurrences(of: " Comment", with: "")
+    }
+
+    private var placeholderText: String {
+        model.context.allowsReply ? "Add comment" : "Edit text"
     }
 
     private var symbolName: String {

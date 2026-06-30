@@ -1,0 +1,53 @@
+name: Media Size
+
+on:
+  pull_request:
+    paths:
+      - "**/*.gif"
+      - "**/*.jpeg"
+      - "**/*.jpg"
+      - "**/*.mov"
+      - "**/*.mp4"
+      - "**/*.png"
+      - "**/*.webp"
+
+jobs:
+  media-size:
+    name: Media files under 1 MB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed media size
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          limit_bytes=1048576
+          failed=0
+
+          mapfile -t media_files < <(
+            git diff --name-only --diff-filter=ACMRT \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" \
+              -- \
+              '*.gif' '*.jpeg' '*.jpg' '*.mov' '*.mp4' '*.png' '*.webp'
+          )
+
+          for file in "${media_files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              continue
+            fi
+
+            size_bytes=$(wc -c < "$file" | tr -d ' ')
+            if (( size_bytes >= limit_bytes )); then
+              echo "::error file=${file}::Media file is ${size_bytes} bytes. Keep each screenshot, recording, and committed media file under 1 MB."
+              failed=1
+            fi
+          done
+
+          exit "$failed"

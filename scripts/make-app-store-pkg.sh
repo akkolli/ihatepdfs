@@ -11,9 +11,16 @@ INSTALLER_SIGNING_IDENTITY="${INSTALLER_SIGNING_IDENTITY:-}"
 PROVISIONING_PROFILE="${PROVISIONING_PROFILE:-}"
 ENTITLEMENTS_PATH="${ENTITLEMENTS_PATH:-$ROOT_DIR/Signing/IHatePDFs-AppStore.entitlements}"
 DIST_DIR="$ROOT_DIR/dist"
-APP_DIR="$DIST_DIR/$APP_NAME.app"
 PKG_PATH="${PKG_PATH:-$DIST_DIR/IHatePDFs-v$RELEASE_VERSION-macos-appstore.pkg}"
 VALIDATE_WITH_ALTOOL="${VALIDATE_WITH_ALTOOL:-0}"
+STAGING_DIR=""
+
+cleanup() {
+  if [[ -n "$STAGING_DIR" ]]; then
+    rm -rf "$STAGING_DIR"
+  fi
+}
+trap cleanup EXIT
 
 require_value() {
   local name="$1"
@@ -35,17 +42,20 @@ require_value "PROVISIONING_PROFILE" "$PROVISIONING_PROFILE" \
   "Download an App Store provisioning profile for $BUNDLE_ID and pass its local path."
 
 mkdir -p "$DIST_DIR"
+rm -f "$PKG_PATH"
+STAGING_DIR="$(mktemp -d "$DIST_DIR/appstore-pkg.XXXXXX")"
+APP_DIR="$STAGING_DIR/$APP_NAME.app"
 
 BUNDLE_ID="$BUNDLE_ID" \
 APP_VERSION="$APP_VERSION" \
 BUILD_NUMBER="$BUILD_NUMBER" \
+APP_DIR="$APP_DIR" \
 SIGNING_IDENTITY="$APP_SIGNING_IDENTITY" \
 ENTITLEMENTS_PATH="$ENTITLEMENTS_PATH" \
 PROVISIONING_PROFILE="$PROVISIONING_PROFILE" \
 "$ROOT_DIR/scripts/build-app.sh"
 
 xattr -cr "$APP_DIR" 2>/dev/null || true
-rm -f "$PKG_PATH"
 productbuild \
   --component "$APP_DIR" /Applications \
   --sign "$INSTALLER_SIGNING_IDENTITY" \
@@ -63,7 +73,7 @@ if [[ "$VALIDATE_WITH_ALTOOL" == "1" ]]; then
     --type macos \
     --file "$PKG_PATH" \
     --username "$ASC_USERNAME" \
-    --password "$ASC_PASSWORD"
+    --password "@env:ASC_PASSWORD"
 fi
 
 echo "Created App Store package: $PKG_PATH"

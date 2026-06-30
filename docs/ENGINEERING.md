@@ -24,6 +24,8 @@ Every change should aim for the smallest final app that still delivers the requi
 
 The release DMG should stay as small as practical. Treat size growth as a product regression, not just a packaging detail.
 
+Hard release-size budget: each direct-download per-architecture installer must be under 400 KB, measured as fewer than 400,000 bytes. Universal builds may be larger, but they do not satisfy the small-download budget. Run `scripts/make-tiny-archives.sh` before release; it builds and checks `IHatePDFs-v<version>-macos-arm64.tar.xz` and `IHatePDFs-v<version>-macos-x86_64.tar.xz` by default.
+
 Before merging release-impacting work, compare:
 
 ```sh

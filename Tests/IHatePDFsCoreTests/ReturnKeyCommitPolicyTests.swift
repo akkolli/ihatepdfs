@@ -13,6 +13,30 @@ final class ReturnKeyCommitPolicyTests: XCTestCase {
         ))
     }
 
+    func testCommandReturnCommitsWhenCommandReturnOnlyModeEnabled() {
+        XCTAssertTrue(ReturnKeyCommitPolicy.shouldCommit(
+            keyCode: 36,
+            shift: false,
+            option: false,
+            command: true,
+            control: false,
+            isEditableMultilineText: true,
+            commandReturnOnly: true
+        ))
+    }
+
+    func testPlainReturnDoesNotCommitWhenCommandReturnOnlyModeEnabled() {
+        XCTAssertFalse(ReturnKeyCommitPolicy.shouldCommit(
+            keyCode: 36,
+            shift: false,
+            option: false,
+            command: false,
+            control: false,
+            isEditableMultilineText: true,
+            commandReturnOnly: true
+        ))
+    }
+
     func testKeypadEnterCommitsInEditableMultilineText() {
         XCTAssertTrue(ReturnKeyCommitPolicy.shouldCommit(
             keyCode: 76,

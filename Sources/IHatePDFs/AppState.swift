@@ -5,19 +5,21 @@ import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum SidebarMode: String, CaseIterable, Identifiable {
+enum SidebarMode: String, CaseIterable {
     case pages
     case annotations
-
-    var id: String { rawValue }
+    case highlights
 }
 
-enum CommentFilter: String, CaseIterable, Identifiable {
+enum LeftSidebarMode: String, CaseIterable, Codable {
+    case pages
+    case annotations
+}
+
+enum CommentFilter: String, CaseIterable {
     case all
     case withComments
     case withoutComments
-
-    var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -28,56 +30,128 @@ enum CommentFilter: String, CaseIterable, Identifiable {
     }
 }
 
+enum HighlightSortMode: String, CaseIterable {
+    case color
+    case page
+
+    var title: String {
+        switch self {
+        case .color: return "Color"
+        case .page: return "Page"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .color: return "paintpalette"
+        case .page: return "doc.text"
+        }
+    }
+}
+
 enum AnnotationPlacementTool: Equatable {
     case freeText
+
+    var cancellationMessage: String {
+        switch self {
+        case .freeText:
+            return "Free text placement canceled."
+        }
+    }
 }
 
 private enum AppDefaults {
-    static let documentSidebarStates = "IHatePDFs.documentSidebarStates.v1"
+    static let documentPageProgress = "IHatePDFs.documentPageProgress.v1"
+    static let documentBookmarks = "IHatePDFs.documentBookmarks.v1"
 
-    static func sidebarPreference(for key: String) -> SidebarPreference? {
-        guard let data = UserDefaults.standard.data(forKey: documentSidebarStates),
-              let states = try? JSONDecoder().decode([String: SidebarPreference].self, from: data)
-        else {
-            return nil
-        }
-
-        return states[key]
+    static func pageProgress(for url: URL) -> PDFRecentDocumentProgress? {
+        PDFRecentDocuments.progress(for: url, in: pageProgressRecords())
     }
 
-    static func setSidebarPreference(_ preference: SidebarPreference, for key: String) {
-        let existingData = UserDefaults.standard.data(forKey: documentSidebarStates)
-        var states = existingData
-            .flatMap { try? JSONDecoder().decode([String: SidebarPreference].self, from: $0) }
-            ?? [:]
-        states[key] = preference
+    static func setPageProgress(url: URL, pageIndex: Int) {
+        guard let progress = PDFRecentDocuments.updatedProgress(
+            pageProgressRecords(),
+            url: url,
+            pageIndex: pageIndex,
+            openedAt: Date()
+        )[PDFRecentDocuments.documentKey(for: url)] else { return }
 
-        guard let data = try? JSONEncoder().encode(states) else { return }
-        UserDefaults.standard.set(data, forKey: documentSidebarStates)
+        var records = UserDefaults.standard.dictionary(forKey: documentPageProgress) ?? [:]
+        records[progress.key] = [
+            "pageIndex": progress.pageIndex,
+            "openedAt": progress.openedAt.timeIntervalSince1970
+        ]
+        UserDefaults.standard.set(records, forKey: documentPageProgress)
+    }
+
+    private static func pageProgressRecords() -> [String: PDFRecentDocumentProgress] {
+        let raw = UserDefaults.standard.dictionary(forKey: documentPageProgress) ?? [:]
+        var records: [String: PDFRecentDocumentProgress] = [:]
+        for (key, value) in raw {
+            guard let dictionary = value as? [String: Any],
+                  let pageIndex = dictionary["pageIndex"] as? Int,
+                  let openedAt = dictionary["openedAt"] as? TimeInterval
+            else {
+                continue
+            }
+            records[key] = PDFRecentDocumentProgress(
+                key: key,
+                pageIndex: pageIndex,
+                openedAt: Date(timeIntervalSince1970: openedAt)
+            )
+        }
+        return records
+    }
+
+    static func bookmarks(for url: URL) -> [PDFDocumentBookmark] {
+        bookmarkRecords()[PDFRecentDocuments.documentKey(for: url)] ?? []
+    }
+
+    static func setBookmarks(_ bookmarks: [PDFDocumentBookmark], for url: URL) {
+        var records = UserDefaults.standard.dictionary(forKey: documentBookmarks) ?? [:]
+        records[PDFRecentDocuments.documentKey(for: url)] = bookmarks.map { bookmark in
+            [
+                "id": bookmark.id,
+                "pageIndex": bookmark.pageIndex,
+                "pageLabel": bookmark.pageLabel,
+                "title": bookmark.title,
+                "createdAt": bookmark.createdAt.timeIntervalSince1970
+            ] as [String: Any]
+        }
+        UserDefaults.standard.set(records, forKey: documentBookmarks)
+    }
+
+    private static func bookmarkRecords() -> [String: [PDFDocumentBookmark]] {
+        let raw = UserDefaults.standard.dictionary(forKey: documentBookmarks) ?? [:]
+        var records: [String: [PDFDocumentBookmark]] = [:]
+        for (key, value) in raw {
+            guard let dictionaries = value as? [[String: Any]] else { continue }
+            records[key] = dictionaries.compactMap { dictionary in
+                guard let id = dictionary["id"] as? String,
+                      let pageIndex = dictionary["pageIndex"] as? Int,
+                      let pageLabel = dictionary["pageLabel"] as? String,
+                      let title = dictionary["title"] as? String,
+                      let createdAt = dictionary["createdAt"] as? TimeInterval
+                else {
+                    return nil
+                }
+                return PDFDocumentBookmark(
+                    id: id,
+                    pageIndex: pageIndex,
+                    pageLabel: pageLabel,
+                    title: title,
+                    createdAt: Date(timeIntervalSince1970: createdAt)
+                )
+            }
+        }
+        return records
     }
 }
 
-private enum SidebarWidthBucket: String {
-    case compact
-    case regular
-    case wide
-
-    init(width: CGFloat) {
-        if width < 960 {
-            self = .compact
-        } else if width < 1280 {
-            self = .regular
-        } else {
-            self = .wide
-        }
-    }
-}
-
-private struct SidebarPreference: Codable, Equatable {
-    var showLeftSidebar: Bool
-    var showCommentsSidebar: Bool
-
-    static let defaultReading = SidebarPreference(showLeftSidebar: false, showCommentsSidebar: false)
+private enum PDFReadingLayout {
+    static let pageBreakMargins = NSEdgeInsets(top: 10, left: 11, bottom: 10, right: 11)
+    static let minimumScaleFactor: CGFloat = 0.25
+    static let maximumReadingScaleFactor: CGFloat = 4
 }
 
 struct AnnotationEditorContext: Identifiable {
@@ -88,11 +162,41 @@ struct AnnotationEditorContext: Identifiable {
     let isNewAnnotation: Bool
     let hadUnsavedChangesBeforeCreation: Bool
     let allowsDelete: Bool
+    let allowsReply: Bool
     let initialText: String
     let initialAuthor: String
 
     var primaryAnnotation: PDFAnnotation? { annotations.first }
     var primaryPage: PDFPage? { pages.first }
+}
+
+struct HighlightedTextGroup {
+    let id: String
+    let title: String
+    let color: Color
+    let items: [AnnotationSnapshot]
+}
+
+struct RecentDocumentItem: Identifiable, Equatable {
+    let url: URL
+    let pageIndex: Int?
+    let openedAt: Date?
+
+    var id: URL { url }
+
+    var title: String {
+        url.deletingPathExtension().lastPathComponent
+    }
+
+    var folderName: String {
+        let parent = url.deletingLastPathComponent()
+        let name = parent.lastPathComponent
+        return name.isEmpty ? parent.path : name
+    }
+
+    var pageText: String? {
+        pageIndex.map { "Page \($0 + 1)" }
+    }
 }
 
 @MainActor
@@ -106,20 +210,26 @@ final class AppState: NSObject, ObservableObject {
     @Published var placementTool: AnnotationPlacementTool?
     @Published var showLeftSidebar = false {
         didSet {
-            persistSidebarPreferenceIfNeeded()
+            clearSelectedAnnotationIfHiddenBySidebarState()
+        }
+    }
+    @Published var leftSidebarMode: LeftSidebarMode = .pages {
+        didSet {
             clearSelectedAnnotationIfHiddenBySidebarState()
         }
     }
     @Published var showCommentsSidebar = false {
         didSet {
-            persistSidebarPreferenceIfNeeded()
+            if showCommentsSidebar, sidebarMode == .pages {
+                sidebarMode = .annotations
+            }
             if !showCommentsSidebar {
                 clearHoveredAnnotation()
             }
             clearSelectedAnnotationIfHiddenBySidebarState()
         }
     }
-    @Published var sidebarMode: SidebarMode = .pages {
+    @Published var sidebarMode: SidebarMode = .annotations {
         didSet { clearSelectedAnnotationIfHiddenBySidebarState() }
     }
     @Published var searchText = "" {
@@ -127,7 +237,9 @@ final class AppState: NSObject, ObservableObject {
     }
     @Published var showToolbarSearch = false
     @Published var searchResults: [PDFSelection] = []
+    @Published private(set) var toolbarSearchFocusRequest = 0
     @Published var hasTextSelection = false
+    @Published var isHighlighterModeActive = false
     @Published var currentSearchIndex = 0
     @Published var pageText = "1"
     @Published var currentPageIndex = 0
@@ -146,6 +258,7 @@ final class AppState: NSObject, ObservableObject {
     @Published var selectedStatusFilter = ReviewState.allStatuses {
         didSet { clearCommentReviewHighlightsHiddenBySidebarVisibility() }
     }
+    @Published var highlightSortMode: HighlightSortMode = .color
     @Published var collapsedPageIndexes: Set<Int> = [] {
         didSet { clearCommentReviewHighlightsHiddenBySidebarVisibility() }
     }
@@ -153,15 +266,29 @@ final class AppState: NSObject, ObservableObject {
     @Published var sidebarReplyTargetID: String?
     @Published var sidebarReplyDraft = ""
     @Published var sidebarReplyAuthor = AnnotationFactory.defaultAuthor
+    @Published var bookmarks: [PDFDocumentBookmark] = []
+    @Published var recentDocumentURLs: [URL] = []
+    @Published private(set) var readerSizeClass: ReaderAdaptiveLayout.SizeClass = .regular
     @Published var hasUnsavedChanges = false
     @Published var statusMessage = "Open a PDF to begin."
 
     private var pageObserver: NSObjectProtocol?
     private var selectionObserver: NSObjectProtocol?
-    private var sidebarWidthBucket: SidebarWidthBucket = .regular
-    private var isApplyingSidebarPreference = false
     private var hoveredAnnotationID: String?
     private var activeSearchQuery: String?
+    private var pendingInitialPageIndex: Int?
+    weak var hostingWindow: NSWindow?
+
+    override init() {
+        super.init()
+        refreshRecentDocuments()
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            removePDFViewObservers()
+        }
+    }
 
     var displayTitle: String {
         documentURL?.lastPathComponent ?? "I Hate PDFs"
@@ -187,15 +314,56 @@ final class AppState: NSObject, ObservableObject {
         hasSidebarReplyDraft
     }
 
+    var isCommentsReviewVisible: Bool {
+        showCommentsSidebar && sidebarMode == .annotations
+    }
+
+    var isCompactWindow: Bool {
+        readerSizeClass == .compact
+    }
+
+    var canShowSelectionActions: Bool {
+        document != nil
+            && hasTextSelection
+            && placementTool == nil
+            && activeEditor == nil
+            && !isHighlighterModeActive
+    }
+
+    var canClearSearchQuery: Bool {
+        !searchText.isEmpty || !searchResults.isEmpty
+    }
+
+    var searchSummaryText: String? {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return nil }
+
+        if searchResults.isEmpty {
+            return activeSearchQuery == query ? "No match" : nil
+        }
+
+        let displayIndex = min(max(currentSearchIndex, 0), searchResults.count - 1) + 1
+        return "\(displayIndex)/\(searchResults.count)"
+    }
+
     var canSaveDocument: Bool {
-        document != nil && hasUnsavedChanges
+        document != nil && hasUnsavedWork
+    }
+
+    var activePlacementName: String? {
+        switch placementTool {
+        case .freeText:
+            return "Free Text"
+        case nil:
+            return nil
+        }
     }
 
     var saveHelpText: String {
         guard document != nil else { return "Open a PDF before saving." }
         if hasUnsavedChanges { return "Save PDF" }
         if hasSidebarReplyDraft { return "Send or cancel the reply draft before saving." }
-        return "No Unsaved Changes"
+        return "No unsaved changes."
     }
 
     var authors: [String] {
@@ -210,10 +378,75 @@ final class AppState: NSObject, ObservableObject {
         return [ReviewState.allStatuses] + preferred + custom
     }
 
+    var currentPageBookmark: PDFDocumentBookmark? {
+        PDFDocumentBookmarks.bookmark(on: currentPageIndex, in: bookmarks)
+    }
+
+    var savedBookmark: PDFDocumentBookmark? {
+        bookmarks.first
+    }
+
+    var bookmarkActionTitle: String {
+        if currentPageBookmark != nil {
+            return "Remove Bookmark"
+        }
+        if savedBookmark != nil {
+            return "Move Bookmark"
+        }
+        return "Add Bookmark"
+    }
+
+    var bookmarkActionHelpText: String {
+        if currentPageBookmark != nil {
+            return "Remove Bookmark"
+        }
+        if savedBookmark != nil {
+            return "Move Bookmark to Current Page"
+        }
+        return "Bookmark Current Page"
+    }
+
+    var highlightedTextGroups: [HighlightedTextGroup] {
+        let grouped = Dictionary(grouping: highlightedTextItems) { highlightColorKey(for: $0) }
+
+        return grouped
+            .map { key, items in
+                HighlightedTextGroup(
+                    id: key,
+                    title: highlightColorTitle(for: key),
+                    color: Color(nsColor: AppSettings.displayColor(forHighlightColor: highlightColor(for: key))),
+                    items: AnnotationReader.sorted(items)
+                )
+            }
+            .sorted { left, right in
+                if left.title != right.title {
+                    return left.title < right.title
+                }
+                return left.id < right.id
+            }
+    }
+
+    var highlightedTextItems: [AnnotationSnapshot] {
+        AnnotationReader.sorted(annotations.filter { $0.kind == .highlight })
+    }
+
+    var recentDocuments: [RecentDocumentItem] {
+        recentDocumentURLs.map { url in
+            let progress = AppDefaults.pageProgress(for: url)
+            return RecentDocumentItem(
+                url: url,
+                pageIndex: progress?.pageIndex,
+                openedAt: progress?.openedAt
+            )
+        }
+    }
+
     var filteredAnnotations: [AnnotationSnapshot] {
         let query = commentSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return annotations.filter { item in
+            guard isCommentReviewItem(item) else { return false }
+
             switch commentFilter {
             case .all:
                 break
@@ -295,9 +528,15 @@ final class AppState: NSObject, ObservableObject {
     func attachPDFView(_ view: PDFView) {
         if pdfView === view { return }
 
+        removePDFViewObservers()
         pdfView = view
         configure(view)
         view.document = document
+        if let pendingInitialPageIndex, let document {
+            goToInitialPage(pendingInitialPageIndex, in: document)
+            fitOpenedDocumentToScreen()
+            animateDocumentViewIn()
+        }
 
         pageObserver = NotificationCenter.default.addObserver(
             forName: .PDFViewPageChanged,
@@ -315,6 +554,7 @@ final class AppState: NSObject, ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.updateTextSelectionState()
+                guard !self.isHighlighterModeActive else { return }
                 guard self.placementTool == nil, self.hasTextSelection else { return }
                 self.statusMessage = "Selection ready for annotation."
             }
@@ -322,14 +562,26 @@ final class AppState: NSObject, ObservableObject {
         updateTextSelectionState()
     }
 
+    private func removePDFViewObservers() {
+        if let pageObserver {
+            NotificationCenter.default.removeObserver(pageObserver)
+            self.pageObserver = nil
+        }
+
+        if let selectionObserver {
+            NotificationCenter.default.removeObserver(selectionObserver)
+            self.selectionObserver = nil
+        }
+    }
+
     func updateWindowWidth(_ width: CGFloat) {
         guard width.isFinite, width > 0 else { return }
 
-        let bucket = SidebarWidthBucket(width: width)
-        guard bucket != sidebarWidthBucket else { return }
+        let sizeClass = ReaderAdaptiveLayout.SizeClass(width: width)
+        guard sizeClass != readerSizeClass else { return }
 
-        sidebarWidthBucket = bucket
-        applySidebarPreferenceForCurrentDocument()
+        readerSizeClass = sizeClass
+        enforceCompactSidebarRules()
     }
 
     func openDocument() {
@@ -405,7 +657,10 @@ final class AppState: NSObject, ObservableObject {
         return nil
     }
 
-    func loadDocument(from url: URL, checkingUnsavedChanges: Bool = true) {
+    func loadDocument(
+        from url: URL,
+        checkingUnsavedChanges: Bool = true
+    ) {
         if checkingUnsavedChanges {
             guard confirmDiscardOrSaveUnsavedChanges(actionName: "opening another PDF") else { return }
         }
@@ -415,45 +670,204 @@ final class AppState: NSObject, ObservableObject {
             return
         }
 
+        resetToFocusedReadingLayout()
         document = pdf
         documentURL = url
-        applySidebarPreferenceForCurrentDocument()
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        refreshRecentDocuments()
+        refreshBookmarks(for: url, pageCount: pdf.pageCount)
+        let restoredPageIndex = PDFRecentDocuments.clampedPageIndex(
+            AppDefaults.pageProgress(for: url)?.pageIndex,
+            pageCount: pdf.pageCount
+        )
+        prepareDocumentViewForOpenAnimation()
         pdfView?.document = pdf
-        pdfView?.goToFirstPage(nil)
-        pageText = "1"
-        currentPageIndex = 0
+        goToInitialPage(restoredPageIndex, in: pdf)
+        fitOpenedDocumentToScreen()
         clearSearchState()
         resetCommentReviewState()
         selectedAnnotationID = nil
         activeEditor = nil
         placementTool = nil
+        isHighlighterModeActive = false
         hasTextSelection = false
         hasUnsavedChanges = false
         clearSidebarReplyDraft()
         refreshAnnotations()
+        animateDocumentViewIn()
         statusMessage = "Opened \(url.lastPathComponent)."
     }
 
-    func closeDocument() {
-        guard confirmDiscardOrSaveUnsavedChanges(actionName: "closing this PDF") else { return }
+    func refreshRecentDocuments() {
+        recentDocumentURLs = PDFRecentDocuments.filteredPDFs(
+            from: NSDocumentController.shared.recentDocumentURLs,
+            currentURL: documentURL,
+            limit: 10
+        )
+    }
 
-        persistSidebarPreferenceIfNeeded()
-        document = nil
-        documentURL = nil
-        annotations = []
-        selectedAnnotationID = nil
-        activeEditor = nil
-        placementTool = nil
-        hasTextSelection = false
-        hasUnsavedChanges = false
-        clearSidebarReplyDraft()
-        clearSearchState()
-        resetCommentReviewState()
-        pageText = "1"
-        currentPageIndex = 0
-        pdfView?.document = nil
-        applySidebarPreference(.defaultReading)
-        statusMessage = "Open a PDF to begin."
+    func openRecentDocument(_ url: URL) {
+        guard PDFFileSelection.isPDFFileURL(url) else {
+            showAlert(title: "Unsupported File", message: "Choose a PDF file.")
+            refreshRecentDocuments()
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            showAlert(title: "File Not Found", message: "\(url.lastPathComponent) is no longer available.")
+            refreshRecentDocuments()
+            return
+        }
+
+        loadDocument(from: url)
+    }
+
+    func clearRecentDocuments() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        refreshRecentDocuments()
+        statusMessage = "Recent PDFs cleared."
+    }
+
+    func addBookmark() {
+        guard let document, let documentURL else {
+            statusMessage = "Open a PDF before adding a bookmark."
+            return
+        }
+
+        let isMovingExistingBookmark = savedBookmark != nil
+        let pageLabel = document.page(at: currentPageIndex)?.label ?? "\(currentPageIndex + 1)"
+        let bookmark = PDFDocumentBookmark(
+            pageIndex: currentPageIndex,
+            pageLabel: pageLabel,
+            title: "Page \(pageLabel)"
+        )
+        bookmarks = PDFDocumentBookmarks.upsert(bookmark, in: bookmarks)
+        AppDefaults.setBookmarks(bookmarks, for: documentURL)
+        statusMessage = isMovingExistingBookmark
+            ? "Moved bookmark to page \(pageLabel)."
+            : "Bookmarked page \(pageLabel)."
+    }
+
+    func removeBookmark(_ bookmark: PDFDocumentBookmark) {
+        guard let documentURL else { return }
+        bookmarks = PDFDocumentBookmarks.removing(id: bookmark.id, from: bookmarks)
+        AppDefaults.setBookmarks(bookmarks, for: documentURL)
+        statusMessage = "Bookmark removed."
+    }
+
+    func toggleBookmarkForCurrentPage() {
+        if let bookmark = currentPageBookmark {
+            removeBookmark(bookmark)
+        } else {
+            addBookmark()
+        }
+    }
+
+    func togglePageSidebar() {
+        if showLeftSidebar {
+            showLeftSidebar = false
+            return
+        }
+
+        if isCompactWindow {
+            showCommentsSidebar = false
+        }
+        leftSidebarMode = .pages
+        showLeftSidebar = true
+    }
+
+    func toggleAnnotationSidebar() {
+        if showLeftSidebar && leftSidebarMode == .annotations {
+            showLeftSidebar = false
+            return
+        }
+
+        if isCompactWindow {
+            showCommentsSidebar = false
+        }
+        leftSidebarMode = .annotations
+        showLeftSidebar = true
+    }
+
+    func toggleLeftSidebar(mode: SidebarMode) {
+        guard mode != .pages else {
+            togglePageSidebar()
+            return
+        }
+
+        toggleRightSidebar(mode: mode)
+    }
+
+    func toggleRightSidebar(mode: SidebarMode = .annotations) {
+        let targetMode = mode == .pages ? .annotations : mode
+        if showCommentsSidebar {
+            hideRightSidebar()
+            return
+        }
+
+        if isCompactWindow {
+            showLeftSidebar = false
+        }
+        sidebarMode = targetMode
+        showCommentsSidebar = true
+    }
+
+    func toggleRightSidebarVisibility() {
+        if showCommentsSidebar {
+            hideRightSidebar()
+            return
+        }
+
+        showRightSidebar(mode: sidebarMode)
+    }
+
+    func toggleCommentsReview() {
+        toggleRightSidebarVisibility()
+    }
+
+    func hideRightSidebar() {
+        showCommentsSidebar = false
+        if !ReaderAdaptiveLayout(sizeClass: readerSizeClass).allowsDualSidebars {
+            showLeftSidebar = false
+        }
+    }
+
+    func showRightSidebar(mode: SidebarMode = .annotations) {
+        if isCompactWindow {
+            showLeftSidebar = false
+        }
+        sidebarMode = mode == .pages ? .annotations : mode
+        showCommentsSidebar = true
+    }
+
+    func selectHighlightColor(_ color: NSColor, applyToSelection: Bool) {
+        AppSettings.highlightColor = color
+        isHighlighterModeActive = true
+        if applyToSelection {
+            addHighlight()
+        } else {
+            statusMessage = "Highlighter on. Select text to highlight."
+        }
+    }
+
+    func goToBookmark(_ bookmark: PDFDocumentBookmark) {
+        guard let document,
+              let page = document.page(at: bookmark.pageIndex)
+        else {
+            statusMessage = "Bookmark page is unavailable."
+            return
+        }
+
+        navigate(to: page, pageIndex: bookmark.pageIndex)
+        statusMessage = "Bookmark: \(bookmark.title)."
+    }
+
+    func goToSavedBookmark() {
+        guard let bookmark = savedBookmark else {
+            statusMessage = "No bookmarks."
+            return
+        }
+        goToBookmark(bookmark)
     }
 
     func confirmDocumentWindowClose() -> Bool {
@@ -461,7 +875,7 @@ final class AppState: NSObject, ObservableObject {
             return false
         }
 
-        persistSidebarPreferenceIfNeeded()
+        persistCurrentPageProgress()
         return true
     }
 
@@ -470,8 +884,24 @@ final class AppState: NSObject, ObservableObject {
             return false
         }
 
-        persistSidebarPreferenceIfNeeded()
+        persistCurrentPageProgress()
         return true
+    }
+
+    func closeDocument() {
+        guard document != nil else {
+            statusMessage = "No PDF is open."
+            return
+        }
+
+        guard confirmDiscardOrSaveUnsavedChanges(actionName: "closing this PDF") else {
+            return
+        }
+
+        persistCurrentPageProgress()
+        clearOpenDocumentState()
+        refreshRecentDocuments()
+        statusMessage = "Closed PDF."
     }
 
     func saveDocument() {
@@ -481,6 +911,7 @@ final class AppState: NSObject, ObservableObject {
     @discardableResult
     private func saveDocument(confirmOverwrite: Bool, confirmReplyDraft: Bool) -> Bool {
         guard let document else { return false }
+
         let discardedEmptyEditor = discardEmptyActiveEditorBeforeWritingIfNeeded()
 
         if confirmReplyDraft {
@@ -534,7 +965,6 @@ final class AppState: NSObject, ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return false }
         guard write(document, to: url) else { return false }
         documentURL = url
-        persistSidebarPreferenceIfNeeded()
         return true
     }
 
@@ -584,6 +1014,30 @@ final class AppState: NSObject, ObservableObject {
         addMarkup(style: .highlight, title: "Highlight", opensEditor: false)
     }
 
+    func addHighlightFromHighlighterMode() {
+        addMarkup(style: .highlight, title: "Highlight", opensEditor: false)
+    }
+
+    func toggleHighlighterMode() {
+        guard document != nil else {
+            statusMessage = "Open a PDF before highlighting."
+            return
+        }
+
+        isHighlighterModeActive.toggle()
+        guard isHighlighterModeActive else {
+            statusMessage = "Highlighter off."
+            return
+        }
+
+        if hasTextSelection {
+            addHighlightFromHighlighterMode()
+        } else {
+            pdfView?.window?.makeFirstResponder(pdfView)
+            statusMessage = "Highlighter on. Select text to highlight."
+        }
+    }
+
     func addUnderline() {
         addMarkup(style: .underline, title: "Underline Comment", opensEditor: true)
     }
@@ -605,17 +1059,16 @@ final class AppState: NSObject, ObservableObject {
     }
 
     func cancelPlacementTool() {
-        guard placementTool != nil else { return }
+        guard let placementTool else { return }
 
-        placementTool = nil
-        statusMessage = "Free text placement canceled."
+        self.placementTool = nil
+        statusMessage = placementTool.cancellationMessage
     }
 
     func placePendingAnnotation(on page: PDFPage, near point: CGPoint) {
         guard let placementTool else { return }
 
         let insertion: AnnotationInsertion
-        let title: String
         let hadUnsavedChangesBeforeCreation = hasUnsavedChanges
 
         switch placementTool {
@@ -626,14 +1079,13 @@ final class AppState: NSObject, ObservableObject {
                 text: "",
                 author: AnnotationFactory.defaultAuthor
             )
-            title = "Free Text"
         }
 
         self.placementTool = nil
         add(insertion)
         refreshAnnotations(on: [page])
         openEditor(
-            title: title,
+            title: "Free Text",
             annotations: [insertion.annotation],
             pages: [page],
             isNew: true,
@@ -658,18 +1110,18 @@ final class AppState: NSObject, ObservableObject {
             guard sidebarReplyParentID == root.id,
                   sidebarReplyTargetID == target.id
             else {
-                showCommentsSidebar = true
+                showRightSidebar()
                 statusMessage = "Finish or cancel the current reply before starting another."
                 return
             }
 
-            showCommentsSidebar = true
+            showRightSidebar()
             select(target, statusMessage: "Reply draft is already open.")
             return
         }
 
         activeEditor = nil
-        showCommentsSidebar = true
+        showRightSidebar()
         sidebarReplyParentID = root.id
         sidebarReplyTargetID = target.id
         sidebarReplyDraft = ""
@@ -727,7 +1179,7 @@ final class AppState: NSObject, ObservableObject {
               let item = snapshot(for: annotation)
         else {
             activeEditor = nil
-            showCommentsSidebar = true
+            showRightSidebar()
             statusMessage = "Comment saved."
             return
         }
@@ -737,9 +1189,10 @@ final class AppState: NSObject, ObservableObject {
     }
 
     func edit(_ item: AnnotationSnapshot) {
+        let editorTitle = item.kind == .freeText ? "Edit Free Text" : "Edit Comment"
         select(item, statusMessage: "Editing \(item.kind.displayName.lowercased()) on page \(item.pageLabel).")
         openEditor(
-            title: item.kind == .freeText ? "Edit Free Text" : "Edit Comment",
+            title: editorTitle,
             annotations: [item.annotation],
             pages: [item.page],
             isNew: false
@@ -880,6 +1333,10 @@ final class AppState: NSObject, ObservableObject {
         select(item, statusMessage: "\(item.kind.displayName) on page \(item.pageLabel).")
     }
 
+    func selectHighlightedText(_ item: AnnotationSnapshot) {
+        select(item, statusMessage: "Highlight on page \(item.pageLabel).")
+    }
+
     private func select(_ item: AnnotationSnapshot, statusMessage message: String) {
         clearHoveredAnnotation()
         clearHighlightedAnnotation()
@@ -970,6 +1427,15 @@ final class AppState: NSObject, ObservableObject {
         pruneSidebarReplyDraftIfNeeded()
     }
 
+    private func refreshBookmarks(for url: URL, pageCount: Int) {
+        bookmarks = PDFDocumentBookmarks.clamped(
+            AppDefaults.bookmarks(for: url),
+            pageCount: pageCount
+        )
+        AppDefaults.setBookmarks(bookmarks, for: url)
+    }
+
+
     func runSearch() {
         guard let document else { return }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -988,6 +1454,7 @@ final class AppState: NSObject, ObservableObject {
         activeSearchQuery = query
         guard !results.isEmpty else {
             pdfView?.highlightedSelections = nil
+            pdfView?.clearSelection()
             statusMessage = "No matches for \(query)."
             return
         }
@@ -1000,17 +1467,24 @@ final class AppState: NSObject, ObservableObject {
         guard document != nil else { return }
         showToolbarSearch = true
         statusMessage = "Search ready."
-        DispatchQueue.main.async { [weak self] in
-            self?.focusToolbarSearchField()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.focusToolbarSearchField()
-        }
+        requestSearchFieldFocus()
+    }
+
+    private func requestSearchFieldFocus() {
+        guard showToolbarSearch else { return }
+        toolbarSearchFocusRequest += 1
     }
 
     func hideSearch() {
         clearSearchState()
         statusMessage = "Search closed."
+    }
+
+    func clearSearchQuery() {
+        searchText = ""
+        clearSearchResults()
+        statusMessage = "Search cleared."
+        requestSearchFieldFocus()
     }
 
     func nextSearchResult() {
@@ -1036,22 +1510,31 @@ final class AppState: NSObject, ObservableObject {
     }
 
     func fitWidth() {
-        pdfView?.displayMode = .singlePageContinuous
-        pdfView?.autoScales = true
+        guard let pdfView else { return }
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        pdfView.displaysAsBook = false
+        pdfView.autoScales = true
+        pdfView.layoutDocumentView()
         statusMessage = "Fit to width."
     }
 
     func fitPage() {
-        pdfView?.displayMode = .singlePage
-        pdfView?.autoScales = true
+        guard let pdfView else { return }
+        pdfView.displayMode = .singlePage
+        pdfView.displaysAsBook = false
+        pdfView.autoScales = true
+        pdfView.layoutDocumentView()
         statusMessage = "Fit to page."
     }
 
     func twoPageContinuous() {
-        pdfView?.displayMode = .twoUpContinuous
-        pdfView?.displayDirection = .vertical
-        pdfView?.displaysAsBook = false
-        pdfView?.autoScales = true
+        guard let pdfView else { return }
+        pdfView.displayMode = .twoUpContinuous
+        pdfView.displayDirection = .vertical
+        pdfView.displaysAsBook = false
+        pdfView.autoScales = true
+        pdfView.layoutDocumentView()
         statusMessage = "Two pages continuous."
     }
 
@@ -1161,6 +1644,14 @@ final class AppState: NSObject, ObservableObject {
             isNew: true,
             hadUnsavedChangesBeforeCreation: hadUnsavedChangesBeforeCreation
         )
+        switch style {
+        case .highlight:
+            statusMessage = "Highlighted selection."
+        case .comment:
+            statusMessage = "Adding comment to selection."
+        case .underline:
+            statusMessage = "Adding underline comment."
+        }
     }
 
     private func add(_ insertion: AnnotationInsertion) {
@@ -1196,6 +1687,7 @@ final class AppState: NSObject, ObservableObject {
         for (index, annotation) in context.annotations.enumerated() {
             guard index < context.pages.count else { continue }
             let page = context.pages[index]
+
             _ = AnnotationFactory.updateComment(
                 for: annotation,
                 on: page,
@@ -1206,6 +1698,41 @@ final class AppState: NSObject, ObservableObject {
             hasUnsavedChanges = true
             pdfView?.annotationsChanged(on: page)
         }
+    }
+
+    private func replaceAnnotation(
+        _ annotation: PDFAnnotation,
+        with replacement: PDFAnnotation,
+        on page: PDFPage
+    ) {
+        let insertionIndex = page.annotations.firstIndex { $0 === annotation }
+        let linkedPopups = page.annotations.filter { candidate in
+            guard AnnotationKeys.annotation(candidate, hasSubtype: .popup) else { return false }
+            return candidate === annotation.popup || AnnotationFactory.parentAnnotation(for: candidate) === annotation
+        }
+
+        for popup in linkedPopups {
+            page.removeAnnotation(popup)
+        }
+        if let popup = annotation.popup, popup.page != nil {
+            page.removeAnnotation(popup)
+        }
+
+        page.removeAnnotation(annotation)
+        page.addAnnotation(replacement)
+        if let insertionIndex,
+           insertionIndex < page.annotations.count - 1 {
+            let tail = page.annotations.dropFirst(insertionIndex).filter { $0 !== replacement }
+            for annotation in tail {
+                page.removeAnnotation(annotation)
+            }
+            for annotation in tail {
+                page.addAnnotation(annotation)
+            }
+        }
+        detachPopupMarkerFromViewer(for: replacement, on: page)
+        hasUnsavedChanges = true
+        pdfView?.annotationsChanged(on: page)
     }
 
     private func shouldDiscardEmptyNewAnnotation(
@@ -1264,7 +1791,8 @@ final class AppState: NSObject, ObservableObject {
         annotations: [PDFAnnotation],
         pages: [PDFPage],
         isNew: Bool,
-        hadUnsavedChangesBeforeCreation: Bool = false
+        hadUnsavedChangesBeforeCreation: Bool = false,
+        allowsReply: Bool = true
     ) {
         closeNativePopups(on: pages)
         let first = annotations.first
@@ -1275,6 +1803,7 @@ final class AppState: NSObject, ObservableObject {
             isNewAnnotation: isNew,
             hadUnsavedChangesBeforeCreation: hadUnsavedChangesBeforeCreation,
             allowsDelete: true,
+            allowsReply: allowsReply,
             initialText: first.map(AnnotationKeys.commentText(for:)) ?? "",
             initialAuthor: first?.userName ?? AnnotationFactory.defaultAuthor
         )
@@ -1295,6 +1824,13 @@ final class AppState: NSObject, ObservableObject {
     private func rootComment(for target: AnnotationSnapshot) -> AnnotationSnapshot? {
         guard let parentID = target.parentID else { return target }
         return annotations.first { $0.id == parentID }
+    }
+
+    private func isCommentReviewItem(_ item: AnnotationSnapshot) -> Bool {
+        if item.kind == .highlight, !item.hasComment {
+            return false
+        }
+        return item.isReply ? item.hasComment : true
     }
 
     private func snapshot(for annotation: PDFAnnotation) -> AnnotationSnapshot? {
@@ -1337,12 +1873,22 @@ final class AppState: NSObject, ObservableObject {
     private func visibleSidebarAnnotationIDs() -> Set<String> {
         var visibleIDs = Set<String>()
 
-        if showLeftSidebar, sidebarMode == .annotations {
+        if showLeftSidebar, leftSidebarMode == .annotations {
             visibleIDs.formUnion(annotations.map(\.id))
         }
 
         guard showCommentsSidebar else {
             return visibleIDs
+        }
+
+        switch sidebarMode {
+        case .highlights:
+            visibleIDs.formUnion(annotations.filter { $0.kind == .highlight }.map(\.id))
+            return visibleIDs
+        case .pages:
+            return visibleIDs
+        case .annotations:
+            break
         }
 
         let visibleTopLevel = topLevelComments.filter { item in
@@ -1368,6 +1914,32 @@ final class AppState: NSObject, ObservableObject {
             || selectedKindFilter != nil
             || selectedAuthorFilter != "All Authors"
             || selectedStatusFilter != ReviewState.allStatuses
+    }
+
+    private func highlightColorKey(for item: AnnotationSnapshot) -> String {
+        AnnotationColorPreference.storageString(
+            for: item.annotation.color,
+            fallback: AppSettings.defaultHighlightColorStorageValue
+        )
+    }
+
+    private func highlightColor(for key: String) -> NSColor {
+        AnnotationColorPreference.color(
+            from: key,
+            fallback: AcademicAnnotationPalette.highlight,
+            minimumAlpha: 0.38
+        )
+    }
+
+    private func highlightColorTitle(for key: String) -> String {
+        let selected = highlightColor(for: key)
+        let selectedStorage = AppSettings.storageString(forHighlightColor: selected)
+        for swatch in AppSettings.highlightSwatches {
+            if AppSettings.storageString(forHighlightColor: swatch.color) == selectedStorage {
+                return swatch.name
+            }
+        }
+        return "Custom"
     }
 
     private func clearSidebarReplyDraft() {
@@ -1424,14 +1996,14 @@ final class AppState: NSObject, ObservableObject {
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
         view.displaysPageBreaks = true
-        view.pageBreakMargins = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        view.pageBreakMargins = PDFReadingLayout.pageBreakMargins
         view.displayBox = .cropBox
         view.autoScales = true
-        view.minScaleFactor = 0.25
-        view.maxScaleFactor = 6
+        view.minScaleFactor = PDFReadingLayout.minimumScaleFactor
+        view.maxScaleFactor = PDFReadingLayout.maximumReadingScaleFactor
         view.interpolationQuality = .high
-        view.backgroundColor = NSColor.controlBackgroundColor
-        view.acceptsDraggedFiles = true
+        view.backgroundColor = NSColor.underPageBackgroundColor
+        view.acceptsDraggedFiles = false
         view.pageShadowsEnabled = true
     }
 
@@ -1568,6 +2140,7 @@ final class AppState: NSObject, ObservableObject {
         searchResults = []
         currentSearchIndex = 0
         pdfView?.highlightedSelections = nil
+        pdfView?.clearSelection()
     }
 
     private func clearSearchResultsForEditedQuery() {
@@ -1702,7 +2275,27 @@ final class AppState: NSObject, ObservableObject {
 
         currentPageIndex = pageIndex
         pageText = "\(pageIndex + 1)"
+        persistCurrentPageProgress()
         statusMessage = "Page \(pageIndex + 1) of \(pageCount)."
+    }
+
+    private func goToInitialPage(_ pageIndex: Int, in document: PDFDocument) {
+        let targetIndex = PDFRecentDocuments.clampedPageIndex(pageIndex, pageCount: document.pageCount)
+        guard let page = document.page(at: targetIndex), let pdfView else {
+            pendingInitialPageIndex = targetIndex
+            currentPageIndex = targetIndex
+            pageText = "\(targetIndex + 1)"
+            return
+        }
+
+        pendingInitialPageIndex = nil
+        let bounds = page.bounds(for: pdfView.displayBox)
+        let topSlice = NSRect(x: bounds.minX, y: bounds.maxY - 1, width: bounds.width, height: 1)
+        pdfView.go(to: topSlice, on: page)
+        pdfView.setNeedsDisplay(pdfView.bounds)
+        currentPageIndex = targetIndex
+        pageText = "\(targetIndex + 1)"
+        persistCurrentPageProgress()
     }
 
     private func updateCurrentPageState() {
@@ -1711,6 +2304,62 @@ final class AppState: NSObject, ObservableObject {
         guard index != NSNotFound else { return }
         currentPageIndex = index
         pageText = "\(index + 1)"
+        persistCurrentPageProgress()
+    }
+
+    private func persistCurrentPageProgress() {
+        guard let documentURL, document != nil else { return }
+        AppDefaults.setPageProgress(url: documentURL, pageIndex: currentPageIndex)
+    }
+
+    private func fitOpenedDocumentToScreen() {
+        applyOpenFitToView()
+        DispatchQueue.main.async { [weak self] in
+            self?.applyOpenFitToView()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
+            self?.applyOpenFitToView()
+        }
+    }
+
+    private func applyOpenFitToView() {
+        guard let pdfView, pdfView.document != nil else { return }
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        pdfView.displaysAsBook = false
+        pdfView.autoScales = true
+        pdfView.layoutDocumentView()
+    }
+
+    private func prepareDocumentViewForOpenAnimation() {
+        guard let pdfView else { return }
+        pdfView.wantsLayer = true
+        pdfView.alphaValue = 0
+    }
+
+    private func animateDocumentViewIn() {
+        guard let pdfView else { return }
+        pdfView.wantsLayer = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            pdfView.animator().alphaValue = 1
+        }
+    }
+
+    private func animateDocumentViewOut(completion: @escaping () -> Void) {
+        guard let pdfView else {
+            completion()
+            return
+        }
+
+        pdfView.wantsLayer = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            pdfView.animator().alphaValue = 0
+        } completionHandler: {
+            pdfView.alphaValue = 1
+            completion()
+        }
     }
 
     private func clearHighlightedAnnotation() {
@@ -1753,71 +2402,41 @@ final class AppState: NSObject, ObservableObject {
         alert.runModal()
     }
 
-    private func focusToolbarSearchField() {
-        guard let window = NSApp.keyWindow,
-              let root = window.contentView?.superview,
-              let field = findSearchField(in: root)
-        else {
-            return
-        }
-
-        window.makeFirstResponder(field)
-        field.selectText(nil)
+    private func resetToFocusedReadingLayout() {
+        leftSidebarMode = .pages
+        sidebarMode = .annotations
+        showLeftSidebar = false
+        showCommentsSidebar = false
+        enforceCompactSidebarRules()
     }
 
-    private func findSearchField(in view: NSView) -> NSTextField? {
-        if let field = view as? NSTextField,
-           field.placeholderString == "Search" {
-            return field
-        }
+    private func clearOpenDocumentState() {
+        selectedAnnotationID = nil
+        activeEditor = nil
+        placementTool = nil
+        pendingInitialPageIndex = nil
+        isHighlighterModeActive = false
+        hasTextSelection = false
 
-        for subview in view.subviews {
-            if let field = findSearchField(in: subview) {
-                return field
-            }
-        }
+        clearSearchState()
+        resetCommentReviewState()
+        clearSidebarReplyDraft()
+        resetToFocusedReadingLayout()
 
-        return nil
+        pdfView?.document = nil
+        document = nil
+        documentURL = nil
+        annotations = []
+        bookmarks = []
+        hasUnsavedChanges = false
+        currentPageIndex = 0
+        pageText = "1"
     }
 
-    private func applySidebarPreferenceForCurrentDocument() {
-        guard let documentURL else {
-            applySidebarPreference(.defaultReading)
-            return
+    private func enforceCompactSidebarRules() {
+        guard !ReaderAdaptiveLayout(sizeClass: readerSizeClass).allowsDualSidebars else { return }
+        if showLeftSidebar && showCommentsSidebar {
+            showLeftSidebar = false
         }
-
-        let preference = AppDefaults.sidebarPreference(
-            for: sidebarPreferenceKey(for: documentURL, bucket: sidebarWidthBucket)
-        ) ?? .defaultReading
-        applySidebarPreference(preference)
-    }
-
-    private func applySidebarPreference(_ preference: SidebarPreference) {
-        isApplyingSidebarPreference = true
-        showLeftSidebar = preference.showLeftSidebar
-        showCommentsSidebar = preference.showCommentsSidebar
-        isApplyingSidebarPreference = false
-    }
-
-    private func persistSidebarPreferenceIfNeeded() {
-        guard !isApplyingSidebarPreference,
-              let documentURL
-        else {
-            return
-        }
-
-        let preference = SidebarPreference(
-            showLeftSidebar: showLeftSidebar,
-            showCommentsSidebar: showCommentsSidebar
-        )
-        AppDefaults.setSidebarPreference(
-            preference,
-            for: sidebarPreferenceKey(for: documentURL, bucket: sidebarWidthBucket)
-        )
-    }
-
-    private func sidebarPreferenceKey(for url: URL, bucket: SidebarWidthBucket) -> String {
-        let documentKey = url.isFileURL ? url.standardizedFileURL.path : url.absoluteString
-        return "\(documentKey)#\(bucket.rawValue)"
     }
 }

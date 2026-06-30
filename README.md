@@ -1,5 +1,12 @@
 # I Hate PDFs
 
+[![Latest release](https://img.shields.io/github/v/release/akkolli/ihatepdfs?label=release)](https://github.com/akkolli/ihatepdfs/releases/latest)
+[![License: GPL v2](https://img.shields.io/badge/license-GPL--2.0--only-blue.svg)](LICENSE)
+[![Platform: macOS 13+](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg)](#build-from-source)
+[![Swift native](https://img.shields.io/badge/Swift-native-orange.svg)](#development)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Media size policy](https://github.com/akkolli/ihatepdfs/actions/workflows/media-size.yml/badge.svg)](https://github.com/akkolli/ihatepdfs/actions/workflows/media-size.yml)
+
 I Hate PDFs is a small native macOS PDF reader for local reading, highlighting, commenting, and review. It uses SwiftUI, AppKit, and PDFKit, keeps documents on your Mac, and avoids accounts, tracking, and cloud upload.
 
 Minimum supported macOS version: macOS 13 Ventura.
@@ -8,13 +15,13 @@ Supported Mac architectures: Apple Silicon and Intel.
 
 ## Latest Release
 
-Current version: `0.3.0` build `4`.
+Current version: `0.4.0` build `6`.
 
-Download the v0.3 macOS DMG from the GitHub release page:
+Download the v0.4 macOS DMG from the GitHub release page:
 
-<https://github.com/akkolli/ihatepdfs/releases/tag/v0.3>
+<https://github.com/akkolli/ihatepdfs/releases/tag/v0.4>
 
-Use `IHatePDFs-v0.3-macos.dmg` for direct installation. Open the DMG, then move `I Hate PDFs.app` into `/Applications`.
+Use `IHatePDFs-v0.4-macos.dmg` for direct installation. Open the DMG, then move `I Hate PDFs.app` into `/Applications`.
 
 The direct-download DMG is separate from the Mac App Store build. The App Store package uses bundle ID `net.akkolli.ihatepdfs` and is built with the sandbox entitlements documented in `docs/APP_STORE.md`.
 
@@ -24,9 +31,11 @@ The direct-download DMG is separate from the Mac App Store build. The App Store 
 - Drag a PDF onto the empty app window to open it.
 - Read with smooth PDFKit scrolling, Retina rendering, zoom, fit-to-width, fit-to-page, and page navigation.
 - Search selectable text PDFs from a compact toolbar control.
-- Start in a focused single-pane reading layout, with thumbnail and comments sidebars hidden until requested.
-- Remember thumbnail and comments sidebar visibility per PDF and coarse window size.
+- Start each opened PDF in a focused single-pane reading layout, with the document fit to the available width and sidebars hidden until requested.
+- Adapt the reader layout across compact, regular, and wide Mac windows while preserving usable PDF width.
 - Configure highlight and comment colors, including opacity, from Settings.
+- Reopen recent PDFs from the empty window or File > Open Recent.
+- Close the current PDF back to the empty window without closing the app window.
 - Create standalone highlights from selected text.
 - Create selected-text comments and underline comments.
 - Create free-text annotations directly on the page.
@@ -36,6 +45,15 @@ The direct-download DMG is separate from the Mac App Store build. The App Store 
 - Save As a new annotated copy.
 - Share the annotated PDF through the native macOS share picker.
 - Review annotations in a comments sidebar with page grouping, search, filters, replies, edit/delete, and click-to-navigate.
+
+## Privacy And Support
+
+- Product and support page: <https://www.akkolli.net/ihatepdfs>
+- Privacy policy: <https://www.akkolli.net/ihatepdfs/privacy>
+- Support policy: [SUPPORT.md](SUPPORT.md)
+- Security policy: [SECURITY.md](SECURITY.md)
+
+I Hate PDFs works with user-selected local files. It does not require an account, collect analytics, or upload PDFs.
 
 ## Build From Source
 
@@ -75,7 +93,15 @@ Create a downloadable `.dmg`:
 scripts/make-dmg.sh
 ```
 
-The packaged app is written to `dist/I Hate PDFs.app`; the disk image is written to `dist/IHatePDFs-v0.3-macos.dmg` by default.
+The packaged app is written to `dist/I Hate PDFs.app`; the disk image is written to `dist/IHatePDFs-v0.4-macos.dmg` by default.
+
+Create the size-gated per-architecture archives:
+
+```sh
+scripts/make-tiny-archives.sh
+```
+
+This writes `dist/IHatePDFs-v0.4-macos-arm64.tar.xz` and `dist/IHatePDFs-v0.4-macos-x86_64.tar.xz`, then verifies each archive is under the 400,000-byte direct-download budget.
 
 Build an App Store upload package after installing the application signing certificate, installer signing certificate, and App Store provisioning profile:
 
@@ -86,11 +112,11 @@ PROVISIONING_PROFILE="$HOME/Downloads/IHatePDFs_AppStore.provisionprofile" \
 scripts/make-app-store-pkg.sh
 ```
 
-The App Store package is written to `dist/IHatePDFs-v0.3-macos-appstore.pkg`. More details are in `docs/APP_STORE.md`.
+The App Store package is written to `dist/IHatePDFs-v0.4-macos-appstore.pkg`. More details are in `docs/APP_STORE.md`.
 
 ## Installation
 
-Download `IHatePDFs-v0.3-macos.dmg` from the latest GitHub release, open it, and move `I Hate PDFs.app` into `/Applications`.
+Download `IHatePDFs-v0.4-macos.dmg` from the latest GitHub release, open it, and move `I Hate PDFs.app` into `/Applications`.
 
 For local direct-download builds, the app may not be Developer ID notarized. If macOS blocks first launch, open Finder, Control-click `I Hate PDFs.app`, choose Open, then confirm.
 
@@ -102,6 +128,15 @@ The project is a Swift Package with two targets:
 - `IHatePDFs`: SwiftUI macOS app, PDFKit bridge, toolbar, menus, sidebars, anchored comment popovers, opening, saving, sharing, and search.
 
 Engineering rule: keep this a native macOS app with the smallest final bundle that still delivers the required fluidity and functionality. See `docs/ENGINEERING.md` before adding dependencies, bundled assets, PDF engines, runtimes, or broad architectural changes.
+Use `docs/WORKFLOW_AUDIT.md` when checking whether a feature matches the intended user workflow before changing or releasing it.
+Use `docs/RELEASE.md` when preparing a new version; it is the checklist for version bumps, release validation, size gates, and upload packaging.
+
+Open source contribution policy:
+
+- Contributions are accepted under GPL-2.0-only. See [LICENSE](LICENSE).
+- Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- UI pull requests must include before/after screenshots or a short screen recording.
+- Screenshots, recordings, and committed media files included with a pull request must each be under 1 MB.
 
 Useful checks:
 
@@ -110,30 +145,29 @@ swift test
 swift build -c release
 swift scripts/verify-sample-pdf.swift
 swift scripts/verify-pdf-annotations.swift
+scripts/verify-release-artifacts.sh
 ```
 
 The PDF verification scripts generate and inspect standard highlight, underline, selected-text comment, reply, free-text, contents, and annotation relationship dictionaries.
+The release artifact verifier checks the current direct-download app and DMG by default. Run `REQUIRE_APP_STORE_PKG=1 scripts/verify-release-artifacts.sh` after creating an App Store package.
 
-Manual release QA for Preview, Acrobat Reader, and browser PDF viewers is documented in `docs/QA.md`. App Store packaging is documented in `docs/APP_STORE.md`.
+Manual release QA for Preview, Acrobat Reader, and browser PDF viewers is documented in `docs/QA.md`. App Store packaging is documented in `docs/APP_STORE.md`, and paste-ready App Store metadata is in `docs/APP_STORE_COPY.md`.
 
 ## Screenshots
 
 Screenshots live in `docs/screenshots`.
 
-Current repository screenshots:
+Current repository screenshots that are useful for local review:
 
-- `docs/screenshots/no-document.png`
 - `docs/screenshots/default-reading.png`
-- `docs/screenshots/highlight-comment-popover.png`
 - `docs/screenshots/main-window.png`
 - `docs/screenshots/comments-sidebar.png`
 - `docs/screenshots/dark-mode-reading.png`
+- `docs/screenshots/preview-interoperability.png`
 
-![No document open](docs/screenshots/no-document.png)
+`docs/screenshots/no-document.png` and `docs/screenshots/highlight-comment-popover.png` are capture targets that need to be retaken before public release docs use them.
 
 ![Default reading mode](docs/screenshots/default-reading.png)
-
-![Highlight comment popover](docs/screenshots/highlight-comment-popover.png)
 
 ![Comments sidebar](docs/screenshots/comments-sidebar.png)
 
@@ -141,4 +175,4 @@ Current repository screenshots:
 
 ## License
 
-MIT. See `LICENSE`.
+GNU General Public License version 2 only. See [LICENSE](LICENSE).

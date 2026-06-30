@@ -7,10 +7,14 @@ public enum ReturnKeyCommitPolicy {
         option: Bool,
         command: Bool,
         control: Bool,
-        isEditableMultilineText: Bool
+        isEditableMultilineText: Bool,
+        commandReturnOnly: Bool = false
     ) -> Bool {
         guard isEditableMultilineText else { return false }
         guard keyCode == 36 || keyCode == 76 else { return false }
+        if commandReturnOnly {
+            return command && !shift && !option && !control
+        }
         return !shift && !option && !command && !control
     }
 }

@@ -40,9 +40,7 @@ Minimum supported version should be explicitly chosen before development. Recomm
 
 ## License
 
-The project should use a permissive open-source license unless there is a specific reason not to. Recommended:
-
-- MIT License or Apache 2.0
+The project is licensed under the GNU General Public License version 2.
 
 ## Required Features
 
@@ -101,7 +99,7 @@ The current UI is wrong in these specific ways:
 - The app exposes a refresh button in the comments panel, which makes comments feel stale or manually synchronized. Comments must update live when annotations are created, edited, deleted, or selected.
 - The comment creation flow feels like filling out a form. Adding a comment to selected text or a highlight should feel anchored, immediate, lightweight, and dismissible.
 - It is unclear where to type a comment after selecting text. The app needs an obvious anchored comment popover, not a separate form-like editor whose relationship to the highlighted text is ambiguous.
-- The highlight/comment workflow is too indirect. A professor should be able to select text, click highlight, immediately type a comment in context, press Command-Return or click away, and continue reading.
+- The comment workflow is too indirect. A professor should be able to select text, click Comment, immediately type in context, press Return or click away, and continue reading. Plain Highlight should stay a fast standalone marking action.
 - The comments sidebar does not visibly update as part of the annotation action. A newly created or edited comment should appear immediately without requiring refresh.
 - The PDF margins and surrounding gray space feel accidental and oversized. Page spacing should be tuned for reading: enough separation to orient the user, but not large dead zones.
 - Toolbar controls are too dense and visually equal. Primary actions, reading controls, annotation tools, search, and save are competing for attention.
@@ -254,7 +252,7 @@ The UI must be fixed in this order:
 2. Add a compact comments button that toggles the comments review sidebar.
 3. Remove the visible comments refresh button and make annotation changes update the sidebar automatically.
 4. Replace the form-like comment editor with an anchored popover tied to the selected highlight, selection-bound comment, underline, or free-text annotation.
-5. Make highlight creation open the comment popover immediately after creating the PDF annotation.
+5. Keep highlight creation as a standalone action that does not open an editor.
 6. Make selected-text comment creation available from the toolbar, comments sidebar, and right-click menu, then open the anchored comment popover immediately.
 7. Tune PDF page margins, page-break spacing, and fit behavior so documents use available space well.
 8. Simplify and regroup the toolbar around reading and annotation tasks.
@@ -434,7 +432,7 @@ The following are explicitly not required:
 The project is complete when:
 
 1. A professor can open a PDF on macOS, highlight text, add a comment, save the file, and reopen it with the annotation still present.
-2. A second person can open that saved PDF in macOS Preview or Adobe Acrobat Reader and see the highlight and open the comment popup.
+2. A second person can open that saved PDF in macOS Preview or Adobe Acrobat Reader and see the highlight and any selected-text comment text.
 3. Selection-bound comments created in the app remain visible as standard PDF annotations in other readers.
 4. Existing PDF text, images, layout, bookmarks, and prior annotations are not destroyed during save.
 5. The app can be built from source using documented commands.

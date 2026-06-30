@@ -19,6 +19,10 @@ let package = Package(
         .testTarget(
             name: "IHatePDFsCoreTests",
             dependencies: ["IHatePDFsCore"]
+        ),
+        .testTarget(
+            name: "IHatePDFsTests",
+            dependencies: ["IHatePDFs", "IHatePDFsCore"]
         )
     ]
 )

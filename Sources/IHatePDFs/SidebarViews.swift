@@ -1,3 +1,4 @@
+import AppKit
 import IHatePDFsCore
 import SwiftUI
 
@@ -6,89 +7,413 @@ struct LeftSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Sidebar", selection: $appState.sidebarMode) {
-                Text("Pages").tag(SidebarMode.pages)
-                Text("Annotations").tag(SidebarMode.annotations)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(8)
+            LeftSidebarModeSwitcher(selection: $appState.leftSidebarMode)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
 
             Divider()
 
-            switch appState.sidebarMode {
+            switch appState.leftSidebarMode {
             case .pages:
                 PDFThumbnailRepresentedView()
                     .padding(.vertical, 6)
             case .annotations:
-                AnnotationListView()
+                AnnotationNavigationListView()
             }
         }
         .background(.bar)
     }
 }
 
-private struct AnnotationListView: View {
+private struct LeftSidebarModeSwitcher: View {
+    @Binding var selection: LeftSidebarMode
+
+    var body: some View {
+        Picker("Left Sidebar", selection: $selection) {
+            Text("Pages").tag(LeftSidebarMode.pages)
+            Text("Marks").tag(LeftSidebarMode.annotations)
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .padding(.vertical, 7)
+        .padding(.horizontal, 6)
+        .labelsHidden()
+    }
+}
+
+private struct AnnotationNavigationListView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        List(appState.annotations, selection: $appState.selectedAnnotationID) { item in
-            Button {
-                appState.select(item)
-            } label: {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: item.kind.symbolName)
-                        .frame(width: 18)
-                        .foregroundStyle(iconColor(for: item.kind))
-                        .help(item.kind.displayName)
+        VStack(spacing: 0) {
+            SidebarSectionHeader(
+                title: "Annotations",
+                count: appState.annotations.count,
+                systemImage: "list.bullet.rectangle"
+            )
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack {
-                            Text(item.kind.displayName)
-                                .font(.caption.weight(.semibold))
-                            Spacer()
-                            Text("p. \(item.pageLabel)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+            Divider()
+
+            if appState.annotations.isEmpty {
+                SidebarEmptyState(
+                    systemImage: "list.bullet.rectangle",
+                    title: "No annotations",
+                    message: "Highlights, underlines, and comments will appear here."
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(appState.annotations) { item in
+                            AnnotationNavigationRow(item: item)
                         }
-
-                        Text(item.firstLine)
-                            .font(.caption)
-                            .foregroundStyle(item.hasComment ? .primary : .secondary)
-                            .lineLimit(2)
-
-                        Text(item.author)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-
-                        Text(dateString(item.createdAt))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
                     }
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
+            }
+        }
+    }
+}
+
+private struct AnnotationNavigationRow: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+    let item: AnnotationSnapshot
+
+    private var previewText: String {
+        if item.kind == .highlight, !item.hasComment {
+            return item.highlightExcerpt
+        }
+
+        if item.kind == .reply {
+            return item.contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Reply"
+                : item.contents
+        }
+
+        return item.firstLine
+    }
+
+    private var submetadataText: String {
+        var parts = ["Page \(item.pageLabel)"]
+        if !item.author.isEmpty {
+            parts.append(item.author)
+        }
+        return parts.joined(separator: " - ")
+    }
+
+    private var dateText: String? {
+        let date = item.modifiedAt ?? item.createdAt
+        return date?.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    var body: some View {
+        Button {
+            appState.select(item)
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: item.kind.symbolName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(item.id == appState.selectedAnnotationID ? Color.accentColor : InterfacePalette.secondaryText(for: colorScheme))
+                    .frame(width: 16, height: 18)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(item.kind.displayName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                            .lineLimit(1)
+
+                        Spacer(minLength: 4)
+
+                        if let dateText {
+                            Text(dateText)
+                                .font(.caption2)
+                                .foregroundStyle(InterfacePalette.quietText(for: colorScheme))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Text(submetadataText)
+                        .font(.caption2)
+                        .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                        .lineLimit(1)
+
+                    Text(previewText)
+                        .font(.caption)
+                        .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(item.id == appState.selectedAnnotationID ? InterfacePalette.selectedRowFill(for: colorScheme) : Color.clear)
+        }
+        .buttonStyle(.plain)
+        .help("Go to \(item.kind.displayName.lowercased()) on page \(item.pageLabel)")
+        .onHover { isHovered in
+            appState.setCommentHover(item, isHovered: isHovered)
+        }
+    }
+}
+
+struct RightSidebarView: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SidebarModeSwitcher(selection: $appState.sidebarMode)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+
+            Divider()
+
+            switch appState.sidebarMode {
+            case .annotations, .pages:
+                CommentsReviewSidebar()
+            case .highlights:
+                HighlightedTextListView()
+            }
+        }
+        .background(.bar)
+    }
+}
+
+private struct SidebarModeSwitcher: View {
+    @Binding var selection: SidebarMode
+
+    var body: some View {
+        Picker("Right Sidebar", selection: $selection) {
+            Text("Comments").tag(SidebarMode.annotations)
+            Text("Highlights").tag(SidebarMode.highlights)
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .padding(.vertical, 7)
+        .padding(.horizontal, 6)
+        .labelsHidden()
+    }
+}
+
+private struct HighlightedTextListView: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var totalHighlightCount: Int {
+        appState.highlightedTextItems.count
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            highlightHeader
+
+            Divider()
+
+            if appState.highlightedTextGroups.isEmpty {
+                SidebarEmptyState(
+                    systemImage: "highlighter",
+                    title: "No highlighted text",
+                    message: "Highlighted passages will appear here."
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        switch appState.highlightSortMode {
+                        case .color:
+                            ForEach(appState.highlightedTextGroups, id: \.id) { group in
+                                HighlightGroupView(group: group)
+                            }
+                        case .page:
+                            ForEach(appState.highlightedTextItems) { item in
+                                HighlightRow(item: item, showsColorSwatch: true)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private var highlightHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "highlighter")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+
+            Text("Highlights")
+                .font(.headline)
+                .lineLimit(1)
+
+            Text("\(totalHighlightCount)")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+
+            Spacer()
+
+            Button {
+                appState.highlightSortMode = appState.highlightSortMode == .color ? .page : .color
+            } label: {
+                Image(systemName: appState.highlightSortMode.systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .controlSize(.mini)
+            .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+            .help("Sort highlights by \(appState.highlightSortMode == .color ? "page" : "color")")
+            .accessibilityLabel("Toggle Highlight Sort")
         }
-        .listStyle(.sidebar)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+    }
+}
+
+private struct HighlightGroupView: View {
+    let group: HighlightedTextGroup
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Capsule()
+                    .fill(group.color)
+                    .frame(width: 34, height: 7)
+                    .overlay {
+                        Capsule()
+                            .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 0.6)
+                    }
+
+                Text(group.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("\(group.items.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 5)
+            .help(group.title)
+
+            ForEach(group.items) { item in
+                HighlightRow(item: item, showsColorSwatch: false)
+            }
+        }
+    }
+}
+
+private struct HighlightRow: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+    let item: AnnotationSnapshot
+    let showsColorSwatch: Bool
+
+    private var swatchColor: Color {
+        Color(nsColor: AppSettings.displayColor(forHighlightColor: item.annotation.color))
     }
 
-    private func iconColor(for kind: AcademicAnnotationKind) -> Color {
-        switch kind {
-        case .comment, .highlight, .note:
-            return Color(nsColor: .secondaryLabelColor)
-        case .underline, .reply:
-            return Color(nsColor: .tertiaryLabelColor)
-        case .freeText:
-            return Color(nsColor: .labelColor)
-        case .other:
-            return Color(nsColor: .tertiaryLabelColor)
+    var body: some View {
+        Button {
+            appState.selectHighlightedText(item)
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: item.id == appState.selectedAnnotationID ? "largecircle.fill.circle" : "circle")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(item.id == appState.selectedAnnotationID ? Color.accentColor : InterfacePalette.quietText(for: colorScheme))
+                    .frame(width: 14, height: 18)
+
+                if showsColorSwatch {
+                    Capsule()
+                        .fill(swatchColor)
+                        .frame(width: 20, height: 6)
+                        .overlay {
+                            Capsule()
+                                .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 0.6)
+                        }
+                        .padding(.top, 6)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("p. \(item.pageLabel)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+
+                    Text(item.highlightExcerpt)
+                        .font(.caption)
+                        .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(item.id == appState.selectedAnnotationID ? InterfacePalette.selectedRowFill(for: colorScheme) : Color.clear)
+        }
+        .buttonStyle(.plain)
+        .help("Go to highlight on page \(item.pageLabel)")
+        .onHover { isHovered in
+            appState.setCommentHover(item, isHovered: isHovered)
         }
     }
+}
 
-    private func dateString(_ date: Date?) -> String {
-        guard let date else { return "No date" }
-        return date.formatted(date: .abbreviated, time: .shortened)
+private struct SidebarSectionHeader: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let title: String
+    let count: Int
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
+            Text("\(count)")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+    }
+}
+
+private struct SidebarEmptyState: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let systemImage: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(InterfacePalette.quietText(for: colorScheme))
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -113,6 +438,13 @@ struct CommentsReviewSidebar: View {
         }
     }
 
+    private var totalCommentCount: Int {
+        appState.annotations.reduce(0) { partial, item in
+            let isVisibleReviewItem = item.isReply ? item.hasComment : item.kind != .highlight || item.hasComment
+            return partial + (isVisibleReviewItem ? 1 : 0)
+        }
+    }
+
     private var isFilteringComments: Bool {
         hasActiveCommentSearch || hasActiveCommentFilters
     }
@@ -132,7 +464,7 @@ struct CommentsReviewSidebar: View {
         VStack(spacing: 0) {
             header
             Divider()
-            quickComment
+            if isFilteringComments { filterSummary }
             if showsSearch || showsFilters {
                 Divider()
                 filters
@@ -144,8 +476,8 @@ struct CommentsReviewSidebar: View {
     }
 
     private var header: some View {
-        HStack(spacing: 9) {
-                Image(systemName: "text.bubble.fill")
+        HStack(spacing: 7) {
+            Image(systemName: "text.bubble.fill")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
                 .help("Comments")
@@ -153,11 +485,14 @@ struct CommentsReviewSidebar: View {
             Text("Comments")
                 .font(.headline)
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .layoutPriority(1)
 
-            Text("\(visibleCommentCount)")
+            Text(commentCountText)
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .fixedSize()
 
             Spacer()
 
@@ -175,6 +510,9 @@ struct CommentsReviewSidebar: View {
                 )
             }
             .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
             .foregroundStyle(hasActiveCommentSearch ? InterfacePalette.actionText(for: colorScheme) : InterfacePalette.secondaryText(for: colorScheme))
             .help("Search Comments")
 
@@ -187,58 +525,45 @@ struct CommentsReviewSidebar: View {
                 )
             }
             .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
             .foregroundStyle(hasActiveCommentFilters ? InterfacePalette.actionText(for: colorScheme) : InterfacePalette.secondaryText(for: colorScheme))
             .help("Filter Comments")
+
+            if isFilteringComments {
+                Button {
+                    clearVisibleFilters()
+                } label: {
+                    Label("Clear Comment Filters", systemImage: "xmark.circle.fill")
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.plain)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                .help("Clear Comment Filters")
+                .accessibilityLabel("Clear Comment Filters")
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
     }
 
-    private var quickComment: some View {
-        Button {
-            appState.addComment()
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "text.bubble")
-                    .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
-                    .help("Comment on selected text")
-
-                Text("On selected text")
-                    .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
-
-                Spacer()
-            }
-            .font(.callout)
-            .padding(.horizontal, 10)
-            .frame(height: 36)
-            .background(InterfacePalette.subtleFill(for: colorScheme))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(!appState.hasTextSelection)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .help("Select text, then add a comment")
+    private var commentCountText: String {
+        guard isFilteringComments, totalCommentCount > 0 else { return "\(visibleCommentCount)" }
+        return "\(visibleCommentCount)/\(totalCommentCount)"
     }
 
     private var filters: some View {
         VStack(spacing: 8) {
             if showsSearch {
-                TextField("Search comments", text: $appState.commentSearchText)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isCommentSearchFocused)
-                    .onAppear {
-                        focusCommentSearch()
-                    }
+                commentSearchField
             }
 
             if showsFilters {
                 Picker("Comment filter", selection: $appState.commentFilter) {
-                    ForEach(CommentFilter.allCases) { filter in
+                    ForEach(CommentFilter.allCases, id: \.self) { filter in
                         Text(filter.title).tag(filter)
                     }
                 }
@@ -252,7 +577,7 @@ struct CommentsReviewSidebar: View {
                             set: { appState.selectedKindFilter = $0 }
                         )) {
                             Text("All Types").tag(Optional<AcademicAnnotationKind>.none)
-                            ForEach(AcademicAnnotationKind.allCases.filter { $0 != .other }) { kind in
+                            ForEach(AcademicAnnotationKind.allCases.filter { $0 != .other }, id: \.self) { kind in
                                 Text(kind.displayName).tag(Optional(kind))
                             }
                         }
@@ -278,13 +603,80 @@ struct CommentsReviewSidebar: View {
         .padding(10)
     }
 
+    private var filterSummary: some View {
+        HStack(spacing: 8) {
+            Label(commentCountText, systemImage: "line.3.horizontal.decrease.circle")
+                .labelStyle(.titleAndIcon)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                .lineLimit(1)
+
+            Spacer(minLength: 6)
+
+            Button {
+                clearVisibleFilters()
+            } label: {
+                Label("Clear", systemImage: "xmark.circle")
+            }
+            .labelStyle(.titleAndIcon)
+            .font(.caption.weight(.medium))
+            .buttonStyle(.plain)
+            .foregroundStyle(InterfacePalette.actionText(for: colorScheme))
+            .help("Clear Comment Filters")
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(InterfacePalette.subtleFill(for: colorScheme))
+    }
+
+    private var commentSearchField: some View {
+        ZStack(alignment: .trailing) {
+            TextField("Search comments", text: $appState.commentSearchText)
+                .textFieldStyle(.plain)
+                .padding(.leading, 8)
+                .padding(.trailing, hasActiveCommentSearch ? 28 : 8)
+                .frame(height: 28)
+                .background(InterfacePalette.fieldFill(for: colorScheme))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(
+                            isCommentSearchFocused ? Color.accentColor : InterfacePalette.hairline(for: colorScheme),
+                            lineWidth: isCommentSearchFocused ? 1.4 : 1
+                        )
+                }
+                .focused($isCommentSearchFocused)
+                .onAppear {
+                    isCommentSearchFocused = true
+                }
+
+            if hasActiveCommentSearch {
+                Button {
+                    appState.commentSearchText = ""
+                    focusCommentSearch()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 8)
+                .help("Clear Search")
+                .accessibilityLabel("Clear Search")
+            }
+        }
+    }
+
+    private func clearVisibleFilters() {
+        appState.clearCommentFilters()
+        if !showsSearch {
+            isCommentSearchFocused = false
+        }
+    }
+
     private func focusCommentSearch() {
-        DispatchQueue.main.async {
-            isCommentSearchFocused = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            isCommentSearchFocused = true
-        }
+        isCommentSearchFocused = true
     }
 
     private var commentList: some View {
@@ -326,7 +718,7 @@ private struct CommentsEmptyState: View {
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
 
-            Text(isFiltering ? "Adjust the search or filters to show more comments." : "Select text in the PDF, then add a comment.")
+            Text(isFiltering ? "Adjust search or filters." : "Comments will appear here.")
                 .font(.caption)
                 .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
                 .multilineTextAlignment(.center)
@@ -420,6 +812,7 @@ private struct PageCommentGroup: View {
 private struct CommentRow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isRowHovered = false
     let item: AnnotationSnapshot
     let replies: [AnnotationSnapshot]
 
@@ -429,7 +822,7 @@ private struct CommentRow: View {
                 Rectangle()
                     .fill(InterfacePalette.connector(for: colorScheme))
                     .frame(width: 1)
-                    .padding(.leading, 14)
+                    .padding(.leading, 22)
                     .padding(.top, 30)
                     .padding(.bottom, 20)
             }
@@ -448,8 +841,8 @@ private struct CommentRow: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(InterfacePalette.hairline(for: colorScheme))
@@ -458,12 +851,13 @@ private struct CommentRow: View {
     }
 
     private var parentComment: some View {
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: 8) {
             CommentMarker(symbolName: item.kind.symbolName, size: 28, font: .caption)
-                .padding(.top, 1)
+                .frame(width: 30, alignment: .center)
+                .padding(.top, 2)
                 .help(item.kind == .reply ? "Reply" : "Comment Thread")
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 Button {
                     appState.select(item)
                 } label: {
@@ -477,33 +871,60 @@ private struct CommentRow: View {
                         appState.select(item)
                 }
 
-                metadataRow(for: item)
-
-                HStack(spacing: 12) {
-                    Button("Edit") {
-                        appState.edit(item)
-                    }
-                    Button("Reply") {
-                        appState.beginSidebarReply(to: item, inThread: item)
-                    }
-                    Button("Delete", role: .destructive) {
-                        appState.delete(item)
-                    }
+                HStack(spacing: 6) {
+                    Text(item.kind.displayName)
+                        .font(.caption2)
+                        .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                    ReviewStatusChip(item: item)
+                    Spacer()
+                    CommentReviewRowActions(
+                        isVisible: isRowHovered || appState.sidebarReplyParentID == item.id,
+                        onEdit: {
+                            appState.edit(item)
+                        },
+                        onReply: {
+                            appState.beginSidebarReply(to: item, inThread: item)
+                        },
+                        onDelete: {
+                            appState.delete(item)
+                        }
+                    )
                 }
-                .font(.caption.weight(.medium))
-                .buttonStyle(.plain)
-                .foregroundStyle(InterfacePalette.actionText(for: colorScheme))
             }
         }
-        .padding(.vertical, 2)
-        .background(item.id == appState.selectedAnnotationID ? InterfacePalette.selectedRowFill(for: colorScheme) : Color.clear)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowFill(for: item))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
         .onHover { isHovered in
+            isRowHovered = isHovered
             appState.setCommentHover(item, isHovered: isHovered)
+        }
+        .contextMenu {
+            Button {
+                appState.edit(item)
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+
+            Button {
+                appState.beginSidebarReply(to: item, inThread: item)
+            } label: {
+                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            }
+
+            Button(role: .destructive) {
+                appState.delete(item)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 
     private var commentSummary: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(item.author)
                     .font(.caption.weight(.semibold))
@@ -532,10 +953,14 @@ private struct CommentRow: View {
         }
     }
 
-    private func metadataRow(for item: AnnotationSnapshot) -> some View {
-        HStack {
-            ReviewStatusChip(item: item)
+    private func rowFill(for item: AnnotationSnapshot) -> Color {
+        if item.id == appState.selectedAnnotationID {
+            return InterfacePalette.selectedRowFill(for: colorScheme)
         }
+        if isRowHovered {
+            return InterfacePalette.subtleFill(for: colorScheme)
+        }
+        return Color.clear
     }
 
     private func dateString(_ date: Date?) -> String {
@@ -575,7 +1000,6 @@ private struct CommentMarker: View {
                 .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
         }
         .frame(width: size, height: size)
-        .background(.bar)
         .clipShape(Circle())
     }
 }
@@ -583,7 +1007,6 @@ private struct CommentMarker: View {
 private struct SidebarReplyComposer: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var isFocused: Bool
     let threadRoot: AnnotationSnapshot
 
     private let editorHorizontalInset: CGFloat = 7
@@ -618,11 +1041,15 @@ private struct SidebarReplyComposer: View {
                 }
 
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $appState.sidebarReplyDraft)
-                        .font(.callout)
-                        .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
-                        .scrollContentBackground(.hidden)
-                        .focused($isFocused)
+                    CommitTextView(
+                        text: $appState.sidebarReplyDraft,
+                        font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                        onCommit: {
+                            if !appState.sidebarReplyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                appState.commitSidebarReply()
+                            }
+                        }
+                    )
                         .padding(.horizontal, editorHorizontalInset)
                         .padding(.vertical, editorVerticalInset)
 
@@ -647,6 +1074,11 @@ private struct SidebarReplyComposer: View {
                     TextField("Author", text: $appState.sidebarReplyAuthor)
                         .textFieldStyle(.plain)
                         .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                        .onSubmit {
+                            if !appState.sidebarReplyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                appState.commitSidebarReply()
+                            }
+                        }
                         .padding(.horizontal, 7)
                         .frame(height: 26)
                         .background(InterfacePalette.fieldFill(for: colorScheme))
@@ -677,16 +1109,6 @@ private struct SidebarReplyComposer: View {
         }
         .padding(.top, 9)
         .padding(.bottom, 2)
-        .onAppear {
-            DispatchQueue.main.async {
-                isFocused = true
-            }
-        }
-        .commitOnPlainReturn {
-            if !appState.sidebarReplyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                appState.commitSidebarReply()
-            }
-        }
     }
 }
 
@@ -743,6 +1165,7 @@ private struct ReviewStatusChip: View {
 private struct ReplyRow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isRowHovered = false
     let item: AnnotationSnapshot
     let threadRoot: AnnotationSnapshot
 
@@ -750,7 +1173,7 @@ private struct ReplyRow: View {
         HStack(alignment: .top, spacing: 8) {
             CommentMarker(symbolName: "text.bubble", size: 22, font: .caption2)
                 .frame(width: 28, alignment: .center)
-                .padding(.top, 7)
+                .padding(.top, 2)
                 .help("Reply")
 
             VStack(alignment: .leading, spacing: 4) {
@@ -767,30 +1190,67 @@ private struct ReplyRow: View {
                         appState.select(item)
                 }
 
-                replyMetadataRow
-
-                HStack(spacing: 12) {
-                    Button("Edit") {
-                        appState.edit(item)
-                    }
-                    Button("Reply") {
-                        appState.beginSidebarReply(to: item, inThread: threadRoot)
-                    }
-                    Button("Delete", role: .destructive) {
-                        appState.delete(item)
-                    }
+                HStack(spacing: 6) {
+                    Text("Reply")
+                        .font(.caption2)
+                        .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+                    ReviewStatusChip(item: item)
+                    Spacer()
+                    CommentReviewRowActions(
+                        isVisible: isRowHovered || appState.sidebarReplyParentID == threadRoot.id,
+                        onEdit: {
+                            appState.edit(item)
+                        },
+                        onReply: {
+                            appState.beginSidebarReply(to: item, inThread: threadRoot)
+                        },
+                        onDelete: {
+                            appState.delete(item)
+                        }
+                    )
                 }
-                .font(.caption.weight(.medium))
-                .buttonStyle(.plain)
-                .foregroundStyle(InterfacePalette.actionText(for: colorScheme))
             }
         }
-        .padding(.top, 8)
-        .padding(.bottom, 2)
-        .background(item.id == appState.selectedAnnotationID ? InterfacePalette.selectedRowFill(for: colorScheme) : Color.clear)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowFill)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
+        .padding(.top, 4)
         .onHover { isHovered in
+            isRowHovered = isHovered
             appState.setCommentHover(item, isHovered: isHovered)
         }
+        .contextMenu {
+            Button {
+                appState.edit(item)
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+
+            Button {
+                appState.beginSidebarReply(to: item, inThread: threadRoot)
+            } label: {
+                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            }
+
+            Button(role: .destructive) {
+                appState.delete(item)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private var rowFill: Color {
+        if item.id == appState.selectedAnnotationID {
+            return InterfacePalette.selectedRowFill(for: colorScheme)
+        }
+        if isRowHovered {
+            return InterfacePalette.subtleFill(for: colorScheme)
+        }
+        return Color.clear
     }
 
     private var replySummary: some View {
@@ -814,14 +1274,39 @@ private struct ReplyRow: View {
         }
     }
 
-    private var replyMetadataRow: some View {
-        HStack {
-            ReviewStatusChip(item: item)
-        }
-    }
-
     private func dateString(_ date: Date?) -> String {
         guard let date else { return "No date" }
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+private struct CommentReviewRowActions: View {
+    let isVisible: Bool
+    let onEdit: () -> Void
+    let onReply: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        Menu {
+            Button(role: .none, action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            Button(role: .none, action: onReply) {
+                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            }
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .opacity(isVisible ? 1 : 0)
+        .animation(.easeInOut(duration: 0.12), value: isVisible)
     }
 }

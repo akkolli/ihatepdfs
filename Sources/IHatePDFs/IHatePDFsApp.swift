@@ -1,4 +1,5 @@
 import AppKit
+import IHatePDFsCore
 import SwiftUI
 
 @main
@@ -22,6 +23,10 @@ struct IHatePDFsApp: App {
 
 @MainActor
 private final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         AppStateRegistry.shared.confirmApplicationShouldTerminate()
             ? .terminateNow
@@ -68,6 +73,21 @@ private final class AppStateRegistry {
         isTerminationApproved = false
     }
 
+    func closeOtherEmptyWindows(keeping activeAppState: AppState) {
+        prune()
+
+        for appState in appStates.compactMap(\.value) where appState !== activeAppState {
+            guard appState.document == nil,
+                  !appState.hasUnsavedWork,
+                  let window = appState.hostingWindow
+            else {
+                continue
+            }
+
+            window.close()
+        }
+    }
+
     private func prune() {
         appStates.removeAll { $0.value == nil }
     }
@@ -91,6 +111,9 @@ private struct AppWindowRoot: View {
             .background(WindowCloseGuard(appState: appState))
             .onOpenURL { url in
                 appState.loadDocument(from: url)
+                if appState.documentURL == url {
+                    AppStateRegistry.shared.closeOtherEmptyWindows(keeping: appState)
+                }
             }
             .onAppear {
                 AppStateRegistry.shared.register(appState)
@@ -144,6 +167,7 @@ private struct WindowCloseGuard: NSViewRepresentable {
 
             self.window = window
             previousDelegate = window?.delegate
+            appState?.hostingWindow = window
 
             if window?.delegate !== self {
                 window?.delegate = self
@@ -185,6 +209,7 @@ private struct WindowCloseGuard: NSViewRepresentable {
             if window?.delegate === self {
                 window?.delegate = previousDelegate
             }
+            appState?.hostingWindow = nil
             window = nil
             previousDelegate = nil
         }
@@ -226,8 +251,16 @@ private struct AppCommands: Commands {
         appState?.hasTextSelection == true
     }
 
+    private var isHighlighterModeActive: Bool {
+        appState?.isHighlighterModeActive == true
+    }
+
     private var canSaveDocument: Bool {
         appState?.canSaveDocument == true
+    }
+
+    private var recentDocumentURLs: [URL] {
+        appState?.recentDocumentURLs ?? []
     }
 
     private var saveHelpText: String {
@@ -240,6 +273,27 @@ private struct AppCommands: Commands {
                 appState?.openDocument()
             }
             .keyboardShortcut("o")
+            .disabled(appState == nil)
+
+            Menu("Open Recent") {
+                if recentDocumentURLs.isEmpty {
+                    Button("No Recent PDFs") {}
+                        .disabled(true)
+                } else {
+                    ForEach(recentDocumentURLs, id: \.self) { url in
+                        Button(url.lastPathComponent) {
+                            appState?.openRecentDocument(url)
+                        }
+                        .help(url.path)
+                    }
+
+                    Divider()
+
+                    Button("Clear Menu") {
+                        appState?.clearRecentDocuments()
+                    }
+                }
+            }
             .disabled(appState == nil)
 
             Button("Save") {
@@ -266,14 +320,19 @@ private struct AppCommands: Commands {
             Button("Settings...") {
                 openSettingsWindow()
             }
+            .keyboardShortcut(",")
 
             Divider()
 
-            Button("Close PDF") {
-                appState?.closeDocument()
+            Button(hasDocument ? "Close PDF" : "Close Window") {
+                if hasDocument {
+                    appState?.closeDocument()
+                } else {
+                    NSApp.keyWindow?.performClose(nil)
+                }
             }
             .keyboardShortcut("w")
-            .disabled(!hasDocument)
+            .disabled(appState == nil)
         }
 
         CommandGroup(after: .textEditing) {
@@ -296,15 +355,21 @@ private struct AppCommands: Commands {
             .disabled(appState?.searchResults.isEmpty != false)
         }
 
-        CommandMenu("View") {
+        CommandGroup(after: .toolbar) {
             Button("Toggle Page Sidebar") {
-                appState?.showLeftSidebar.toggle()
+                appState?.togglePageSidebar()
             }
             .keyboardShortcut("0", modifiers: [.command, .option])
             .disabled(!hasDocument)
 
-            Button("Toggle Comments Sidebar") {
-                appState?.showCommentsSidebar.toggle()
+            Button("Toggle Annotation List") {
+                appState?.toggleAnnotationSidebar()
+            }
+            .keyboardShortcut("2", modifiers: [.command, .option])
+            .disabled(!hasDocument)
+
+            Button("Toggle Right Sidebar") {
+                appState?.toggleRightSidebarVisibility()
             }
             .keyboardShortcut("1", modifiers: [.command, .option])
             .disabled(!hasDocument)
@@ -343,11 +408,11 @@ private struct AppCommands: Commands {
         }
 
         CommandMenu("Annotate") {
-            Button("Highlight Selection") {
-                appState?.addHighlight()
+            Button(isHighlighterModeActive ? "Turn Highlighter Off" : "Turn Highlighter On") {
+                appState?.toggleHighlighterMode()
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
-            .disabled(!hasDocument || !hasTextSelection)
+            .disabled(!hasDocument)
 
             Button("Underline Selection") {
                 appState?.addUnderline()
@@ -366,6 +431,20 @@ private struct AppCommands: Commands {
             }
             .keyboardShortcut("t", modifiers: [.command, .shift])
             .disabled(!hasDocument)
+        }
+
+        CommandMenu("Bookmark") {
+            Button(appState?.bookmarkActionTitle ?? "Add Bookmark") {
+                appState?.toggleBookmarkForCurrentPage()
+            }
+            .keyboardShortcut("b", modifiers: [.command])
+            .disabled(!hasDocument)
+
+            Button("Go to Bookmark") {
+                appState?.goToSavedBookmark()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .option])
+            .disabled(appState?.savedBookmark == nil)
         }
 
         CommandGroup(after: .windowArrangement) {

@@ -1,8 +1,14 @@
 .DS_Store
+.swiftpm/
 .build/
 DerivedData/
 dist/
 release/
+plans/
+*.dmg
+*.pkg
+*.tar.gz
+*.tar.xz
 *.zip
 *.xcuserstate
 *.xcworkspace/xcuserdata/

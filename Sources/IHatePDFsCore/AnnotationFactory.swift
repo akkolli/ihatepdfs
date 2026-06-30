@@ -103,17 +103,21 @@ public enum AnnotationFactory {
         date: Date = Date()
     ) -> [AnnotationInsertion] {
         let lineSelections = selection.selectionsByLine()
-        var groups: [(page: PDFPage, rects: [CGRect])] = []
+        var groups: [(page: PDFPage, rects: [CGRect], text: [String])] = []
 
         for lineSelection in lineSelections {
+            let lineText = lineSelection.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             for page in lineSelection.pages {
                 let rect = lineSelection.bounds(for: page).insetBy(dx: -1.5, dy: -1.0)
                 guard !rect.isNull, rect.width > 0, rect.height > 0 else { continue }
 
                 if let index = groups.firstIndex(where: { $0.page === page }) {
                     groups[index].rects.append(rect)
+                    if !lineText.isEmpty {
+                        groups[index].text.append(lineText)
+                    }
                 } else {
-                    groups.append((page: page, rects: [rect]))
+                    groups.append((page: page, rects: [rect], text: lineText.isEmpty ? [] : [lineText]))
                 }
             }
         }
@@ -130,6 +134,12 @@ public enum AnnotationFactory {
                 quadPoints(for: rect, relativeTo: unionRect)
             }
             standardize(annotation, comment: comment, author: author, date: date)
+            if style == .highlight {
+                let highlightText = group.text.joined(separator: " ")
+                if !highlightText.isEmpty {
+                    _ = annotation.setValue(highlightText, forAnnotationKey: AnnotationKeys.appHighlightText)
+                }
+            }
             if style == .comment {
                 _ = annotation.setValue(AnnotationKeys.appKindComment, forAnnotationKey: AnnotationKeys.appKind)
             }

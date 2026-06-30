@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import PDFKit
 
-public enum AcademicAnnotationKind: String, CaseIterable, Identifiable {
+public enum AcademicAnnotationKind: String, CaseIterable {
     case comment
     case highlight
     case underline
@@ -10,8 +10,6 @@ public enum AcademicAnnotationKind: String, CaseIterable, Identifiable {
     case freeText
     case reply
     case other
-
-    public var id: String { rawValue }
 
     public init(annotation: PDFAnnotation) {
         if annotation.value(forAnnotationKey: AnnotationKeys.appKind) as? String == AnnotationKeys.appKindComment {
@@ -62,7 +60,7 @@ public enum AcademicAnnotationKind: String, CaseIterable, Identifiable {
     }
 }
 
-public struct AnnotationSnapshot: Identifiable, Equatable {
+public struct AnnotationSnapshot: Identifiable {
     public let id: String
     public let pageIndex: Int
     public let pageLabel: String
@@ -73,6 +71,7 @@ public struct AnnotationSnapshot: Identifiable, Equatable {
     public let modifiedAt: Date?
     public let status: String
     public let contents: String
+    public let highlightText: String
     public let bounds: CGRect
     public let annotation: PDFAnnotation
     public let page: PDFPage
@@ -89,6 +88,7 @@ public struct AnnotationSnapshot: Identifiable, Equatable {
         modifiedAt: Date?,
         status: String,
         contents: String,
+        highlightText: String,
         bounds: CGRect,
         annotation: PDFAnnotation,
         page: PDFPage,
@@ -104,6 +104,7 @@ public struct AnnotationSnapshot: Identifiable, Equatable {
         self.modifiedAt = modifiedAt
         self.status = status
         self.contents = contents
+        self.highlightText = highlightText
         self.bounds = bounds
         self.annotation = annotation
         self.page = page
@@ -126,23 +127,22 @@ public struct AnnotationSnapshot: Identifiable, Equatable {
         !contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    public var isReply: Bool {
-        parentID != nil
+    public var highlightExcerpt: String {
+        let stored = highlightText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stored.isEmpty {
+            return stored
+        }
+
+        let fallback = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !fallback.isEmpty {
+            return fallback
+        }
+
+        return "Highlight on page \(pageLabel)"
     }
 
-    public static func == (lhs: AnnotationSnapshot, rhs: AnnotationSnapshot) -> Bool {
-        lhs.id == rhs.id
-            && lhs.pageIndex == rhs.pageIndex
-            && lhs.pageLabel == rhs.pageLabel
-            && lhs.annotationIndex == rhs.annotationIndex
-            && lhs.kind == rhs.kind
-            && lhs.author == rhs.author
-            && lhs.createdAt == rhs.createdAt
-            && lhs.modifiedAt == rhs.modifiedAt
-            && lhs.status == rhs.status
-            && lhs.contents == rhs.contents
-            && lhs.bounds == rhs.bounds
-            && lhs.parentID == rhs.parentID
+    public var isReply: Bool {
+        parentID != nil
     }
 }
 
@@ -155,6 +155,7 @@ public enum AnnotationKeys {
     public static let appKind = PDFAnnotationKey(rawValue: "IHatePDFsKind")
     public static let appKindComment = "Comment"
     public static let appCommentText = PDFAnnotationKey(rawValue: "IHatePDFsCommentText")
+    public static let appHighlightText = PDFAnnotationKey(rawValue: "IHatePDFsHighlightText")
 
     public static func commentText(for annotation: PDFAnnotation) -> String {
         if let value = annotation.value(forAnnotationKey: appCommentText) as? String,
@@ -351,6 +352,7 @@ public enum AnnotationReader {
 
             let kind = AcademicAnnotationKind(annotation: annotation)
             let contents = AnnotationKeys.commentText(for: annotation)
+            let highlightText = annotation.value(forAnnotationKey: AnnotationKeys.appHighlightText) as? String ?? ""
             guard kind != .other || !contents.isEmpty else { continue }
 
             let id = AnnotationKeys.stableID(
@@ -384,6 +386,7 @@ public enum AnnotationReader {
                     modifiedAt: annotation.modificationDate,
                     status: status,
                     contents: contents,
+                    highlightText: highlightText,
                     bounds: annotation.bounds,
                     annotation: annotation,
                     page: page,

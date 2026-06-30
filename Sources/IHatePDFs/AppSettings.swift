@@ -11,6 +11,19 @@ enum AppSettings {
     private static let minimumHighlightAlpha: CGFloat = 0.38
     private static let minimumCommentAlpha: CGFloat = 0.12
 
+    static var highlightSwatches: [(name: String, color: NSColor)] {
+        [
+            ("Yellow", AcademicAnnotationPalette.highlight),
+            ("Green", NSColor(calibratedRed: 0.27, green: 0.78, blue: 0.28, alpha: 0.58)),
+            ("Aqua", NSColor(calibratedRed: 0.0, green: 0.70, blue: 0.78, alpha: 0.58)),
+            ("Pink", NSColor(calibratedRed: 1.0, green: 0.32, blue: 0.62, alpha: 0.58)),
+            ("Orange", NSColor(calibratedRed: 1.0, green: 0.48, blue: 0.08, alpha: 0.58)),
+            ("Purple", NSColor(calibratedRed: 0.62, green: 0.36, blue: 0.94, alpha: 0.58)),
+            ("Cyan", NSColor(calibratedRed: 0.0, green: 0.78, blue: 0.92, alpha: 0.56)),
+            ("Graphite", NSColor(calibratedWhite: 0.28, alpha: 0.50))
+        ]
+    }
+
     static var highlightColor: NSColor {
         get {
             highlightColor(from: UserDefaults.standard.string(forKey: highlightColorStorageKey))
@@ -59,6 +72,10 @@ enum AppSettings {
 
     static func storageString(forHighlightColor color: Color) -> String {
         storageString(forHighlightColor: NSColor(color))
+    }
+
+    static func displayColor(forHighlightColor color: NSColor) -> NSColor {
+        highlightColor(from: storageString(for: color)).withAlphaComponent(1)
     }
 
     static func storageString(forCommentColor color: NSColor) -> String {

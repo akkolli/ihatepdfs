@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased
+
+### Repository
+
+- Added README badges for release, license, platform, Swift, contributions, and media-size policy.
+- Added contribution, support, security, issue, and pull request policies for open-source contributors.
+- Added a pull request media-size policy requiring UI screenshots or recordings and limiting each screenshot, recording, or committed media file to less than 1 MB.
+
+## Version 0.4.0 (build 6) - 2026-06-25
+
+Version 0.4 removes the experimental Fill & Sign, form-field navigation, and PDF signing implementation from the shipping app. The release is back to a small native reader and annotation tool while preserving the size target.
+
+### Removed
+
+- Prepared the release metadata for app version `0.4.0`, build `6`.
+- Removed the Fill & Sign panel, menu commands, settings, flat fill-mark factory, form scanner/navigation, custom form choice popover, PDF signing pipeline, and related QA scripts/tests.
+- Removed the SecurityInterface link from the app target.
+- Preserved the size target by returning to the existing lightweight native stack: SwiftUI, AppKit, PDFKit, and Foundation.
+
+### Reliability
+
+- Cleaned up PDFKit page/selection observers when reattaching a PDF view and when app state is released, avoiding stale observer callbacks in long app sessions.
+- Re-ran the core test suite, release build, annotation verification, and release artifact verification for the 0.4 prep pass.
+
+## Version 0.3.0 (build 5) - 2026-06-25
+
+Build 5 is a release-candidate polish build for signatures, Recent PDFs, and release metadata. Complete the manual Acrobat and Preview signature checks before public distribution.
+
+### Fill And Sign
+
+- Added a Fill & Sign toolbar/menu workflow for placing flat PDF fill marks without adding a bundled PDF engine.
+- Added text, checkbox, date, initials, and typed signature-appearance marks as standard printable `/FreeText` annotations with app metadata.
+- Added AcroForm widget scanning so PDFs with form fields report field counts in the reader/status UI.
+- Added native form-field navigation from the Fill & Sign strip, Annotate menu, Tab, and Shift-Tab.
+- Captured choice/list field options and export values through PDFKit's public form APIs.
+- Added a compact native choice/list popover for PDFKit-backed combo and list fields.
+- Kept visual signature appearances separate from real digital signatures; cryptographic signing still goes through Keychain-backed File > Sign PDF....
+- Typed signature appearances can now be reused as the visible widget appearance for a real digital signature.
+- Added unit coverage for Fill & Sign models, form scanning, choice/list options and fallback values, unsupported fields, form-value save/reopen behavior, form-scan performance, fill mark metadata, page clamping, visible signature appearance reuse, and signature-appearance non-detection as a digital signature.
+
+### PDF Signatures
+
+- Added digital PDF signing from File > Sign PDF..., using macOS Keychain identities and detached CMS signatures.
+- Signed output is written as an incremental PDF update, preserving original PDF bytes instead of rewriting through PDFKit.
+- Added invisible signatures and click-to-place visible signature boxes.
+- Visible signatures are now drawn into page content as well as the signature widget appearance, so macOS Preview renders the signer text instead of a blank signature box.
+- Added signature detection and status reporting for signed PDFs.
+- Added a compact signature inspector from the status bar with signer, status, date, reason, location, format, and ByteRange details.
+- Normal Save is disabled for signed PDFs; Save As creates an unsigned edited copy instead.
+- Added CMS validation for signed PDFs, including separate reporting for invalid signatures and untrusted certificates.
+- Added CMS parsing support for macOS Security's indefinite-length CMS output, so real Keychain-signed PDFs validate after signing.
+- Added performance-budget coverage for large-document annotation snapshots, page-scoped annotation refresh, and large PDF signature scanning.
+- Added opt-in Keychain signature QA that can either use an installed identity or create a temporary QA identity, then writes invisible and visible signed PDFs and checks Poppler `pdfsig` recognition when available.
+- Added an Acrobat QA handoff script that verifies signed QA files and prints the exact remaining Acrobat Reader checks.
+- Fixed signature QA fixtures to emit valid classic xref offsets, avoiding parser reconstruction warnings and Preview rejection.
+- Added unit coverage for signature scanning, incremental writing, field construction, ByteRange/Contents patching, and validator parsing.
+
+### Reader Polish
+
+- Added compact Recent PDFs shortcuts in the empty window and File > Open Recent, backed by macOS's native recent-document list.
+- Added paste-ready App Store metadata, review notes, privacy answers, and screenshot guidance.
+- Added a bitmap Preview screenshot showing visible signed-PDF output for external-reader QA.
+- Added isolated App Store package staging so Mac App Store builds no longer overwrite the direct-download app bundle in `dist`.
+- Strengthened release artifact verification for bundle IDs, App Store package signing, embedded provisioning profiles, and expected sandbox entitlements.
+- Removed SVG mock screenshots from the documentation assets.
+
 ## Version 0.3.0 (build 4) - 2026-06-24
 
 Version 0.3 is focused on making annotation work feel reliable enough for real PDF review: clearer highlights, better comment behavior, safer saving, and release packaging for the Mac App Store.

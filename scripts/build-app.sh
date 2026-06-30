@@ -7,7 +7,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/release-version.sh"
 CONFIGURATION="${CONFIGURATION:-release}"
 BUNDLE_ID="${BUNDLE_ID:-net.akkolli.ihatepdfs}"
+SIZE_OPTIMIZED="${SIZE_OPTIMIZED:-0}"
 STRIP_RELEASE="${STRIP_RELEASE:-1}"
+ICON_MAX_SIZE="${ICON_MAX_SIZE:-1024}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
 ENTITLEMENTS_PATH="${ENTITLEMENTS_PATH:-}"
 PROVISIONING_PROFILE="${PROVISIONING_PROFILE:-}"
@@ -20,18 +22,32 @@ else
   ARCHS="${ARCHS:-}"
 fi
 DIST_DIR="$ROOT_DIR/dist"
-APP_DIR="$DIST_DIR/$APP_NAME.app"
+APP_DIR="${APP_DIR:-$DIST_DIR/$APP_NAME.app}"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-ICON_SOURCE="$ROOT_DIR/ihatepdf.png"
+ICON_SOURCE="${ICON_SOURCE:-$ROOT_DIR/ihatepdf-profile-transparent.png}"
+if [[ ! -f "$ICON_SOURCE" ]]; then
+  echo "Missing app icon source: $ICON_SOURCE" >&2
+  echo "Set ICON_SOURCE to the path of a transparent PNG icon (for example: $ROOT_DIR/ihatepdf-profile-transparent.png)." >&2
+  exit 1
+fi
+
+if ! sips -g hasAlpha "$ICON_SOURCE" 2>/dev/null | grep -q "hasAlpha: yes"; then
+  echo "App icon source must include an alpha channel for transparent rendering: $ICON_SOURCE" >&2
+  exit 1
+fi
 ICON_NAME="AppIcon"
 DERIVED_ENTITLEMENTS_PATH=""
 PROFILE_PLIST_PATH=""
+NORMALIZED_ICON_SOURCE=""
 
 cleanup() {
   if [[ -n "$DERIVED_ENTITLEMENTS_PATH" ]]; then
     rm -f "$DERIVED_ENTITLEMENTS_PATH"
+  fi
+  if [[ -n "$NORMALIZED_ICON_SOURCE" ]]; then
+    rm -f "$NORMALIZED_ICON_SOURCE"
   fi
   if [[ -n "$PROFILE_PLIST_PATH" ]]; then
     rm -f "$PROFILE_PLIST_PATH"
@@ -55,6 +71,13 @@ SWIFT_BUILD_ARGS=(-c "$CONFIGURATION")
 for ARCH in $ARCHS; do
   SWIFT_BUILD_ARGS+=(--arch "$ARCH")
 done
+if [[ "$CONFIGURATION" == "release" && "$SIZE_OPTIMIZED" == "1" ]]; then
+  SWIFT_BUILD_ARGS+=(
+    -Xswiftc -Osize
+    -Xswiftc -Xfrontend -Xswiftc -disable-reflection-metadata
+    -Xswiftc -Xfrontend -Xswiftc -remove-runtime-asserts
+  )
+fi
 
 BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
 swift build "${SWIFT_BUILD_ARGS[@]}"
@@ -64,8 +87,21 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILD_DIR/$EXECUTABLE_NAME" "$MACOS_DIR/$EXECUTABLE_NAME"
 
 if [[ "$CONFIGURATION" == "release" && "$STRIP_RELEASE" != "0" ]]; then
-  strip -x "$MACOS_DIR/$EXECUTABLE_NAME"
+  if [[ "$SIZE_OPTIMIZED" == "1" ]]; then
+    strip -u -r "$MACOS_DIR/$EXECUTABLE_NAME"
+  else
+    strip -x "$MACOS_DIR/$EXECUTABLE_NAME"
+  fi
 fi
+
+NORMALIZED_ICON_SOURCE="$(mktemp /tmp/ihatepdf-appicon-XXXXXX.png)"
+if ! sips -s format png "$ICON_SOURCE" --out "$NORMALIZED_ICON_SOURCE" >/dev/null; then
+  rm -f "$NORMALIZED_ICON_SOURCE"
+  NORMALIZED_ICON_SOURCE=""
+  echo "Failed to normalize icon source: $ICON_SOURCE" >&2
+  exit 1
+fi
+ICON_SOURCE="$NORMALIZED_ICON_SOURCE"
 
 if [[ -n "$PROVISIONING_PROFILE" ]]; then
   if [[ ! -f "$PROVISIONING_PROFILE" ]]; then
@@ -88,19 +124,31 @@ mkdir -p "$ICONSET_DIR"
 make_icon() {
   local pixels="$1"
   local output="$2"
-  sips -s format png --resampleHeightWidth "$pixels" "$pixels" "$ICON_SOURCE" --out "$ICONSET_DIR/$output" >/dev/null
+  local output_path="$ICONSET_DIR/$output"
+
+  sips -s format png --resampleHeightWidth "$pixels" "$pixels" "$ICON_SOURCE" --out "$output_path" >/dev/null
 }
 
 make_icon 16 "icon_16x16.png"
 make_icon 32 "icon_16x16@2x.png"
 make_icon 32 "icon_32x32.png"
 make_icon 64 "icon_32x32@2x.png"
-make_icon 128 "icon_128x128.png"
-make_icon 256 "icon_128x128@2x.png"
-make_icon 256 "icon_256x256.png"
-make_icon 512 "icon_256x256@2x.png"
-make_icon 512 "icon_512x512.png"
-make_icon 1024 "icon_512x512@2x.png"
+if (( ICON_MAX_SIZE >= 128 )); then
+  make_icon 128 "icon_128x128.png"
+fi
+if (( ICON_MAX_SIZE >= 128 )); then
+  make_icon 256 "icon_128x128@2x.png"
+fi
+if (( ICON_MAX_SIZE >= 256 )); then
+  make_icon 256 "icon_256x256.png"
+fi
+if (( ICON_MAX_SIZE >= 512 )); then
+  make_icon 512 "icon_256x256@2x.png"
+  make_icon 512 "icon_512x512.png"
+fi
+if (( ICON_MAX_SIZE >= 1024 )); then
+  make_icon 1024 "icon_512x512@2x.png"
+fi
 
 iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/$ICON_NAME.icns"
 rm -rf "$ICONSET_DIR"
@@ -156,7 +204,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>LSSupportsOpeningDocumentsInPlace</key>
   <true/>
   <key>NSHumanReadableCopyright</key>
-  <string>MIT License</string>
+  <string>GNU General Public License version 2</string>
 </dict>
 </plist>
 PLIST

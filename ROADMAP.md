@@ -7,7 +7,7 @@
 - Reading controls: scrolling, zoom, fit width, fit page, page navigation, search.
 - Focused default reading mode with optional page thumbnail sidebar.
 - Highlight, underline, selection-bound comment, and free-text annotations.
-- Anchored comment popovers from newly created selected-text comments, highlights, underlines, free text, and clicked annotations.
+- Anchored comment popovers from newly created selected-text comments, underlines, free text, and clicked comment-capable annotations; plain highlights remain standalone.
 - Annotation list sidebar.
 - Optional comments review sidebar with grouping, collapsed filtering, replies, and navigation.
 - Save, Save As, and native macOS sharing with standard PDF annotation writing.
@@ -25,6 +25,14 @@
 - Safer close/open/quit prompts for unsaved annotations and reply drafts.
 - Mac App Store packaging path for `net.akkolli.ihatepdfs`.
 
+## Preparing Version 0.4
+
+- Keep the reader focused on open: sidebars are hidden and the PDF is fit to the available width.
+- Preserve the lightweight annotation workflow: highlight, underline, selected-text comments, free text, replies, search, bookmarks, and native sharing.
+- Remove the experimental Fill & Sign, form-field navigation, and PDF signing implementation from v0.4.
+- Keep the direct-download DMG and per-architecture archives under the release size budget.
+- Release metadata, docs, and packaging names prepared for `0.4.0` build `6`.
+
 ## Next
 
 - More explicit visual selection handles for the active annotation.
@@ -34,6 +42,7 @@
 - Fully standards-compliant reply-thread relationships through a lower-level PDF writer if PDFKit continues rejecting object-valued `/IRT`.
 - Stronger interoperability test corpus covering Preview, Acrobat Reader, and browser PDF viewers.
 - Import/export verification fixtures for existing annotated PDFs.
+- Revisit form fill and signing later as a smaller, cleaner design.
 
 ## Later
 
