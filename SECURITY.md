@@ -10,9 +10,7 @@ Security fixes target the latest public release and the `main` branch.
 
 Do not report security vulnerabilities in public issues.
 
-Use GitHub private vulnerability reporting if it is enabled for this repository. If it is not enabled, contact the maintainer through the product support page:
-
-<https://www.akkolli.net/ihatepdfs>
+Use GitHub private vulnerability reporting if it is enabled for this repository. If it is not enabled, contact the maintainer at <akshaykolli@hotmail.com>.
 
 Include:
 

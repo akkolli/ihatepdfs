@@ -23,7 +23,6 @@ Run these before tagging or uploading:
 
 ```sh
 swift test
-swift scripts/verify-sample-pdf.swift
 swift scripts/verify-pdf-annotations.swift
 scripts/build-app.sh
 BUILD_APP=0 scripts/make-dmg.sh
@@ -33,13 +32,6 @@ scripts/verify-release-artifacts.sh
 
 `scripts/make-tiny-archives.sh` builds per-architecture direct-download archives and
 fails if either archive is `>= 400,000` bytes.
-
-For signature changes, also run:
-
-```sh
-USE_TEMP_SIGNING_KEYCHAIN=1 scripts/verify-pdf-signatures.sh
-scripts/prepare-acrobat-qa.sh
-```
 
 Finish the manual reader checks in `docs/QA.md` before public distribution.
 
@@ -57,12 +49,39 @@ pollute source control.
 
 ## App Store
 
-Use `docs/APP_STORE.md` for signing identities, provisioning profile setup, and the
-upload package command. After building the App Store package, run:
+Bundle ID: `net.akkolli.ihatepdfs`
+
+Project website: `https://www.akkolli.net/ihatepdfs`
+
+Support email: `akshaykolli@hotmail.com`
+
+Required Apple Developer items:
+
+- Explicit macOS App ID for `net.akkolli.ihatepdfs`.
+- App Store provisioning profile for that App ID.
+- Application signing certificate installed in Keychain.
+- Installer signing certificate installed in Keychain.
+
+The app only needs these sandbox entitlements right now:
+
+- `com.apple.security.app-sandbox`
+- `com.apple.security.files.user-selected.read-write`
+
+Do not add network, Apple Events, Downloads-folder, or bookmark entitlements unless a shipped feature requires them.
+
+Build the upload package:
+
+```sh
+APP_SIGNING_IDENTITY="3rd Party Mac Developer Application: Your Name (TEAMID)" \
+INSTALLER_SIGNING_IDENTITY="3rd Party Mac Developer Installer: Your Name (TEAMID)" \
+PROVISIONING_PROFILE="$HOME/Downloads/IHatePDFs_AppStore.provisionprofile" \
+scripts/make-app-store-pkg.sh
+```
+
+After building the App Store package, run:
 
 ```sh
 REQUIRE_APP_STORE_PKG=1 scripts/verify-release-artifacts.sh
 ```
 
-Do not change App Store entitlements unless a shipped feature requires the new
-capability.
+Upload the `.pkg` with Transporter or App Store Connect tooling. Keep `APP_VERSION` and `BUILD_NUMBER` in `scripts/release-version.sh` aligned with App Store Connect before submitting.

@@ -4,12 +4,13 @@ I Hate PDFs is a native macOS app for local PDF reading and annotation. Contribu
 
 By contributing, you agree that your contribution is licensed under GNU General Public License version 2 only.
 
+Vibe coded pull requests are welcome. This is a vibe coded repo, but vibe coded does not mean unreviewed: every change must be understandable, documented, tested at the right level, and held to the same strict QA bar as hand-written code.
+
 ## Before You Start
 
 - Check existing issues and pull requests before starting duplicate work.
 - Open an issue first for large UI changes, new dependencies, release-process changes, or features that affect PDF saving/export behavior.
-- Read `docs/ENGINEERING.md` before adding dependencies, bundled assets, PDF engines, runtimes, or broad architectural changes.
-- Read `docs/WORKFLOW_AUDIT.md` before changing a user workflow.
+- Read `docs/QA.md` before changing a user workflow.
 - Read `docs/RELEASE.md` before preparing a release.
 
 ## Development
@@ -33,15 +34,29 @@ scripts/verify-release-artifacts.sh
 
 Run the checks that match your change and list them in the pull request. If you skip a relevant check, say why.
 
+## Engineering Policy
+
+- Build with Swift, SwiftUI, AppKit, PDFKit, and system frameworks that ship with macOS.
+- Do not replace the app with Electron, Chromium, a web runtime, a bundled JavaScript shell, or a cross-platform UI toolkit.
+- Do not bundle a PDF renderer, OCR engine, database, scripting runtime, or large framework when a macOS system API can satisfy the requirement.
+- Keep third-party dependencies at or near zero. Any new package must justify shipped size, runtime cost, maintenance cost, and why system APIs are insufficient.
+- Keep assets minimal. Avoid large raster images, fonts, sample PDFs, videos, model files, or generated resources in the app bundle.
+- Keep expensive work page-scoped or lazy when possible.
+- Treat release-size growth as a product regression. Each direct-download per-architecture installer must stay under 400,000 bytes.
+- Run `scripts/make-tiny-archives.sh` before release-impacting changes; it builds and checks the per-architecture archives.
+
 ## Pull Request Policy
 
 - Keep each pull request focused on one behavior, bug fix, or documentation change.
 - Explain the user-visible behavior change, not only the implementation detail.
+- For vibe coded changes, say so in the pull request and describe what you reviewed manually before opening it.
 - Link the issue when one exists.
 - Update `CHANGELOG.md` for user-visible changes.
 - Avoid unrelated formatting churn.
 - Do not add a new dependency, bundled asset, PDF engine, runtime, or release artifact without explaining the size and maintenance impact.
 - Preserve the app's local-first privacy model.
+- Document the before/after behavior clearly enough that a maintainer can review the intent without reverse-engineering the diff.
+- Include the QA commands and manual checks that prove the change works.
 
 ## UI Screenshot Policy
 

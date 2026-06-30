@@ -8,6 +8,7 @@ APP_NAME="I Hate PDFs"
 DIST_DIR="$ROOT_DIR/dist"
 STAGING_DIR="$DIST_DIR/tiny"
 ARCHS_TO_BUILD="${ARCHS_TO_BUILD:-arm64 x86_64}"
+PER_ARCH_INSTALLER_MAX_BYTES="${PER_ARCH_INSTALLER_MAX_BYTES:-400000}"
 
 if ! command -v xz >/dev/null 2>&1; then
   echo "xz is required to build size-gated tiny archives with architecture filters." >&2
@@ -39,6 +40,27 @@ compression_args_for_arch() {
   esac
 }
 
+file_size() {
+  stat -f '%z' "$1"
+}
+
+verify_under_budget() {
+  local path="$1"
+  [[ -f "$path" ]] || {
+    echo "missing $path" >&2
+    exit 1
+  }
+
+  local bytes
+  bytes="$(file_size "$path")"
+  if (( bytes >= PER_ARCH_INSTALLER_MAX_BYTES )); then
+    echo "$path is $bytes bytes; per-architecture installer budget is < $PER_ARCH_INSTALLER_MAX_BYTES bytes" >&2
+    exit 1
+  fi
+
+  echo "OK: $path is $bytes bytes (< $PER_ARCH_INSTALLER_MAX_BYTES)."
+}
+
 for ARCH in $ARCHS_TO_BUILD; do
   APP_DIR="$STAGING_DIR/$ARCH/$APP_NAME.app"
   ARCHIVE_PATH="$DIST_DIR/IHatePDFs-v$RELEASE_VERSION-macos-$ARCH.tar.xz"
@@ -59,6 +81,5 @@ for ARCH in $ARCHS_TO_BUILD; do
     | env XZ_OPT= xz "${XZ_ARGS[@]}" -c > "$ARCHIVE_PATH"
 
   echo "Created $ARCHIVE_PATH"
+  verify_under_budget "$ARCHIVE_PATH"
 done
-
-"$ROOT_DIR/scripts/verify-release-size.sh"

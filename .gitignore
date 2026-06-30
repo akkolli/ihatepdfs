@@ -5,12 +5,14 @@ DerivedData/
 dist/
 release/
 plans/
+$tmpdir/
 *.dmg
 *.pkg
 *.tar.gz
 *.tar.xz
 *.zip
 *.xcuserstate
+*.swp
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.mobileprovision

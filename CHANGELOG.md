@@ -7,6 +7,14 @@
 - Added README badges for release, license, platform, Swift, contributions, and media-size policy.
 - Added contribution, support, security, issue, and pull request policies for open-source contributors.
 - Added a pull request media-size policy requiring UI screenshots or recordings and limiting each screenshot, recording, or committed media file to less than 1 MB.
+- Renamed source, test, and signing directories to lowercase paths.
+- Removed duplicate release/planning docs, stale screenshot targets, and the unused duplicate icon image.
+- Removed redundant support/App Store copy docs and trimmed repository screenshots to one representative image.
+- Consolidated release helper scripts by folding size checks into tiny archive creation and sample PDF generation into PDF annotation verification.
+- Consolidated workflow audit guidance into the manual QA document.
+- Consolidated engineering guidance into contributing docs and App Store packaging into release docs.
+- Documented that vibe coded pull requests are welcome when they include clear change documentation, strict QA, and UI screenshots or recordings when relevant.
+- Documented `https://www.akkolli.net/ihatepdfs` as the project website and `akshaykolli@hotmail.com` as the support contact.
 
 ## Version 0.4.0 (build 6) - 2026-06-25
 

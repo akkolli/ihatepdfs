@@ -26,10 +26,10 @@ APP_DIR="${APP_DIR:-$DIST_DIR/$APP_NAME.app}"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-ICON_SOURCE="${ICON_SOURCE:-$ROOT_DIR/ihatepdf-profile-transparent.png}"
+ICON_SOURCE="${ICON_SOURCE:-$ROOT_DIR/assets/app-icon.png}"
 if [[ ! -f "$ICON_SOURCE" ]]; then
   echo "Missing app icon source: $ICON_SOURCE" >&2
-  echo "Set ICON_SOURCE to the path of a transparent PNG icon (for example: $ROOT_DIR/ihatepdf-profile-transparent.png)." >&2
+  echo "Set ICON_SOURCE to the path of a transparent PNG icon (for example: $ROOT_DIR/assets/app-icon.png)." >&2
   exit 1
 fi
 

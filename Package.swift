@@ -11,18 +11,24 @@ let package = Package(
         .library(name: "IHatePDFsCore", targets: ["IHatePDFsCore"])
     ],
     targets: [
-        .target(name: "IHatePDFsCore"),
+        .target(
+            name: "IHatePDFsCore",
+            path: "sources/core"
+        ),
         .executableTarget(
             name: "IHatePDFs",
-            dependencies: ["IHatePDFsCore"]
+            dependencies: ["IHatePDFsCore"],
+            path: "sources/app"
         ),
         .testTarget(
             name: "IHatePDFsCoreTests",
-            dependencies: ["IHatePDFsCore"]
+            dependencies: ["IHatePDFsCore"],
+            path: "tests/core"
         ),
         .testTarget(
             name: "IHatePDFsTests",
-            dependencies: ["IHatePDFs", "IHatePDFsCore"]
+            dependencies: ["IHatePDFs", "IHatePDFsCore"],
+            path: "tests/app"
         )
     ]
 )

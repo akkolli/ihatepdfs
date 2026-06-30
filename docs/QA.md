@@ -2,6 +2,18 @@
 
 Run this checklist before tagging a public release.
 
+## Workflow Contract
+
+Use this section as the source of truth when checking whether a feature matches the product workflow before changing or releasing it.
+
+- Opened PDFs intentionally reset to focused single-pane reading with sidebars hidden.
+- Plain Highlight is standalone.
+- Selected-text Comment and Underline open the anchored editor.
+- The visible Save toolbar icon is intentionally absent. Save remains available from the File menu and keyboard shortcut; Share remains visible.
+- Compact windows intentionally make left and right sidebars mutually exclusive to preserve usable PDF width.
+- Sidebar resize handles should be easy to grab through hover/cursor affordance without becoming large visual dividers.
+- Experimental Fill & Sign, custom form-field navigation, PDF signing, signature inspection, and related QA are outside v0.4 scope.
+
 ## Latest v0.4 Automated QA Run
 
 Completed on 2026-06-29:
@@ -12,7 +24,6 @@ Completed on 2026-06-29:
 Before release, also run:
 
 ```sh
-swift scripts/verify-sample-pdf.swift
 swift scripts/verify-pdf-annotations.swift
 swift build -c release --product IHatePDFs
 scripts/build-app.sh
@@ -64,15 +75,24 @@ Use at least:
 29. Start typing a sidebar reply without sending it, then close, replace, save, or share the PDF and verify the app warns before omitting or discarding the draft.
 30. Create a new selected-text comment or free text, leave its popover empty, choose Save or Share, and verify the temporary empty annotation is discarded.
 
+## Regression Coverage
+
+- Focused reading layout after opening a PDF.
+- Returning to the empty-window workflow after closing a PDF.
+- Compact one-sidebar-at-a-time behavior.
+- Page sidebar toggle closing the active Marks sidebar instead of switching to Pages first.
+- Right-sidebar toolbar toggle closing and reopening the current right mode without switching tabs.
+- Regular-width ability to show navigation and review sidebars together.
+- Save availability for clean, dirty, and reply-draft-only states.
+
 ## External Readers
 
 Before manual reader checks, run the automated PDF structure checks:
 
 ```sh
-swift scripts/verify-sample-pdf.swift
 swift scripts/verify-pdf-annotations.swift
 ```
 
-These checks generate an annotated PDF, reopen it with PDFKit, and inspect raw PDF annotation dictionaries for standard `/Highlight`, `/Underline`, `/Text`, `/FreeText`, `/Contents`, `/QuadPoints`, `/IRT`, `/RT`, and `/Parent` entries.
+This check generates an annotated PDF, reopens it with PDFKit, and inspects raw PDF annotation dictionaries for standard `/Highlight`, `/Underline`, `/Text`, `/FreeText`, `/Contents`, `/QuadPoints`, `/IRT`, `/RT`, and `/Parent` entries.
 
 For Preview, Acrobat Reader, and browser PDF viewers, verify exported markup comments keep their comment text on the parent annotation's standard `/Contents` key and do not depend on PDFKit-generated `/Popup` links for highlights or underlines.

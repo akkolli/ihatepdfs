@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="ihatepdf-profile-transparent.png" alt="I Hate PDFs app icon" width="128">
+  <img src="assets/app-icon.png" alt="I Hate PDFs app icon" width="128">
 </p>
 
 <h1 align="center">I Hate PDFs</h1>
@@ -15,14 +15,17 @@
   <a href="https://github.com/akkolli/ihatepdfs/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/akkolli/ihatepdfs?label=version&color=0A7AFF"></a>
   <a href="#development"><img alt="Language: Swift" src="https://img.shields.io/badge/language-Swift-F05138?logo=swift&logoColor=white"></a>
   <a href="CONTRIBUTING.md"><img alt="Status: active development" src="https://img.shields.io/badge/status-active%20development-16A34A"></a>
+  <img alt="Vibe coded" src="https://img.shields.io/badge/vibe-coded-FF69B4">
 </p>
 
 <p align="center">
   <a href="https://github.com/akkolli/ihatepdfs/releases/latest">Download</a>
   ·
-  <a href="https://github.com/akkolli/ihatepdfs/issues/new?template=bug_report.md">Report a bug</a>
+  <a href="https://github.com/akkolli/ihatepdfs/issues/new">Report a bug</a>
   ·
   <a href="CONTRIBUTING.md">Contribute</a>
+  ·
+  <a href="mailto:akshaykolli@hotmail.com">Support</a>
   ·
   <a href="https://www.akkolli.net/ihatepdfs/privacy">Privacy</a>
 </p>
@@ -45,7 +48,7 @@ Download the v0.4 macOS DMG from the GitHub release page:
 
 Use `IHatePDFs-v0.4-macos.dmg` for direct installation. Open the DMG, then move `I Hate PDFs.app` into `/Applications`.
 
-The direct-download DMG is separate from the Mac App Store build. The App Store package uses bundle ID `net.akkolli.ihatepdfs` and is built with the sandbox entitlements documented in `docs/APP_STORE.md`.
+The direct-download DMG is separate from the Mac App Store build. The App Store package uses bundle ID `net.akkolli.ihatepdfs` and is built with sandbox entitlements documented in `docs/RELEASE.md`.
 
 ## Features
 
@@ -70,9 +73,9 @@ The direct-download DMG is separate from the Mac App Store build. The App Store 
 
 ## Privacy And Support
 
-- Product and support page: <https://www.akkolli.net/ihatepdfs>
+- Project website: <https://www.akkolli.net/ihatepdfs>
+- Support email: <akshaykolli@hotmail.com>
 - Privacy policy: <https://www.akkolli.net/ihatepdfs/privacy>
-- Support policy: [SUPPORT.md](SUPPORT.md)
 - Security policy: [SECURITY.md](SECURITY.md)
 
 I Hate PDFs works with user-selected local files. It does not require an account, collect analytics, or upload PDFs.
@@ -134,7 +137,7 @@ PROVISIONING_PROFILE="$HOME/Downloads/IHatePDFs_AppStore.provisionprofile" \
 scripts/make-app-store-pkg.sh
 ```
 
-The App Store package is written to `dist/IHatePDFs-v0.4-macos-appstore.pkg`. More details are in `docs/APP_STORE.md`.
+The App Store package is written to `dist/IHatePDFs-v0.4-macos-appstore.pkg`. More details are in `docs/RELEASE.md`.
 
 ## Installation
 
@@ -149,13 +152,13 @@ The project is a Swift Package with two targets:
 - `IHatePDFsCore`: PDF annotation models, annotation export helpers, hit testing, color preference logic, file selection, and keyboard policies.
 - `IHatePDFs`: SwiftUI macOS app, PDFKit bridge, toolbar, menus, sidebars, anchored comment popovers, opening, saving, sharing, and search.
 
-Engineering rule: keep this a native macOS app with the smallest final bundle that still delivers the required fluidity and functionality. See `docs/ENGINEERING.md` before adding dependencies, bundled assets, PDF engines, runtimes, or broad architectural changes.
-Use `docs/WORKFLOW_AUDIT.md` when checking whether a feature matches the intended user workflow before changing or releasing it.
+Engineering rule: keep this a native macOS app with the smallest final bundle that still delivers the required fluidity and functionality. See `CONTRIBUTING.md` before adding dependencies, bundled assets, PDF engines, runtimes, or broad architectural changes.
 Use `docs/RELEASE.md` when preparing a new version; it is the checklist for version bumps, release validation, size gates, and upload packaging.
 
 Open source contribution policy:
 
 - Contributions are accepted under GPL-2.0-only. See [LICENSE](LICENSE).
+- Vibe coded pull requests are welcome, but they must include clear change documentation, strict QA notes, and screenshots or recordings for UI changes.
 - Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 - UI pull requests must include before/after screenshots or a short screen recording.
 - Screenshots, recordings, and committed media files included with a pull request must each be under 1 MB.
@@ -165,35 +168,20 @@ Useful checks:
 ```sh
 swift test
 swift build -c release
-swift scripts/verify-sample-pdf.swift
 swift scripts/verify-pdf-annotations.swift
 scripts/verify-release-artifacts.sh
 ```
 
-The PDF verification scripts generate and inspect standard highlight, underline, selected-text comment, reply, free-text, contents, and annotation relationship dictionaries.
+The PDF verification script generates and inspects standard highlight, underline, selected-text comment, reply, free-text, contents, and annotation relationship dictionaries.
 The release artifact verifier checks the current direct-download app and DMG by default. Run `REQUIRE_APP_STORE_PKG=1 scripts/verify-release-artifacts.sh` after creating an App Store package.
 
-Manual release QA for Preview, Acrobat Reader, and browser PDF viewers is documented in `docs/QA.md`. App Store packaging is documented in `docs/APP_STORE.md`, and paste-ready App Store metadata is in `docs/APP_STORE_COPY.md`.
+Manual release QA and workflow guardrails for Preview, Acrobat Reader, and browser PDF viewers are documented in `docs/QA.md`. Release and App Store packaging are documented in `docs/RELEASE.md`.
 
-## Screenshots
+## Screenshot
 
 Screenshots live in `docs/screenshots`.
 
-Current repository screenshots that are useful for local review:
-
-- `docs/screenshots/default-reading.png`
-- `docs/screenshots/main-window.png`
-- `docs/screenshots/comments-sidebar.png`
-- `docs/screenshots/dark-mode-reading.png`
-- `docs/screenshots/preview-interoperability.png`
-
-`docs/screenshots/no-document.png` and `docs/screenshots/highlight-comment-popover.png` are capture targets that need to be retaken before public release docs use them.
-
 ![Default reading mode](docs/screenshots/default-reading.png)
-
-![Comments sidebar](docs/screenshots/comments-sidebar.png)
-
-![Dark mode reading](docs/screenshots/dark-mode-reading.png)
 
 ## License
 
