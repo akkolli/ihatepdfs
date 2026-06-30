@@ -88,6 +88,19 @@ private final class AppStateRegistry {
         }
     }
 
+    func appStateForActiveWindow() -> AppState? {
+        prune()
+
+        let candidateWindows = [NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }
+        for window in candidateWindows {
+            if let appState = appStates.compactMap(\.value).first(where: { $0.hostingWindow === window }) {
+                return appState
+            }
+        }
+
+        return nil
+    }
+
     private func prune() {
         appStates.removeAll { $0.value == nil }
     }
@@ -241,7 +254,11 @@ private final class WindowCloseGuardView: NSView {
 }
 
 private struct AppCommands: Commands {
-    @FocusedObject private var appState: AppState?
+    @FocusedObject private var focusedAppState: AppState?
+
+    private var appState: AppState? {
+        focusedAppState ?? AppStateRegistry.shared.appStateForActiveWindow()
+    }
 
     private var hasDocument: Bool {
         appState?.document != nil
@@ -257,6 +274,10 @@ private struct AppCommands: Commands {
 
     private var canSaveDocument: Bool {
         appState?.canSaveDocument == true
+    }
+
+    private var canDeleteSelectedAnnotation: Bool {
+        appState?.canDeleteSelectedAnnotation == true
     }
 
     private var recentDocumentURLs: [URL] {
@@ -408,6 +429,26 @@ private struct AppCommands: Commands {
         }
 
         CommandMenu("Annotate") {
+            Button("Undo Annotation Change") {
+                appState?.undoAnnotationChange()
+            }
+            .disabled(appState?.canUndoAnnotationChange != true)
+
+            Button("Redo Annotation Change") {
+                appState?.redoAnnotationChange()
+            }
+            .disabled(appState?.canRedoAnnotationChange != true)
+
+            Divider()
+
+            Button("Cancel Annotation Mode") {
+                appState?.cancelActiveMode()
+            }
+            .keyboardShortcut(.cancelAction)
+            .disabled(appState?.canCancelActiveMode != true)
+
+            Divider()
+
             Button(isHighlighterModeActive ? "Turn Highlighter Off" : "Turn Highlighter On") {
                 appState?.toggleHighlighterMode()
             }
@@ -431,6 +472,13 @@ private struct AppCommands: Commands {
             }
             .keyboardShortcut("t", modifiers: [.command, .shift])
             .disabled(!hasDocument)
+
+            Divider()
+
+            Button("Delete Selected Annotation") {
+                appState?.deleteSelectedAnnotation()
+            }
+            .disabled(!canDeleteSelectedAnnotation)
         }
 
         CommandMenu("Bookmark") {

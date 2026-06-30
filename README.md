@@ -40,7 +40,7 @@ Supported Mac architectures: Apple Silicon and Intel.
 
 ## Latest Release
 
-Current version: `0.4.0` build `6`.
+Current version: `0.4.0` build `7`.
 
 Download the v0.4 macOS DMG from the GitHub release page:
 
@@ -52,7 +52,7 @@ The direct-download DMG is separate from the Mac App Store build. The App Store 
 
 ## Features
 
-- Incredibly small app size: v0.4 ships as a 957 KB direct-download DMG, with a 253 KB Apple Silicon archive and a 287 KB Intel archive.
+- Incredibly small app size: v0.4 ships as a 998 KB direct-download DMG, with a 255 KB Apple Silicon archive and a 288 KB Intel archive.
 - Extremely fast native PDF reading: built on SwiftUI, AppKit, and PDFKit instead of a bundled browser, runtime, database, or PDF engine.
 - Power- and size-efficient by design: minimal assets, no bundled services, and no background sync workload.
 - Local-first privacy: opens user-selected PDFs from disk and does not require accounts, analytics, tracking, or cloud upload.

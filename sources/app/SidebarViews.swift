@@ -314,6 +314,7 @@ private struct HighlightGroupView: View {
 private struct HighlightRow: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isRowHovered = false
     let item: AnnotationSnapshot
     let showsColorSwatch: Bool
 
@@ -322,49 +323,80 @@ private struct HighlightRow: View {
     }
 
     var body: some View {
-        Button {
-            appState.selectHighlightedText(item)
-        } label: {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: item.id == appState.selectedAnnotationID ? "largecircle.fill.circle" : "circle")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(item.id == appState.selectedAnnotationID ? Color.accentColor : InterfacePalette.quietText(for: colorScheme))
-                    .frame(width: 14, height: 18)
-
-                if showsColorSwatch {
-                    Capsule()
-                        .fill(swatchColor)
-                        .frame(width: 20, height: 6)
-                        .overlay {
-                            Capsule()
-                                .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 0.6)
-                        }
-                        .padding(.top, 6)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("p. \(item.pageLabel)")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
-
-                    Text(item.highlightExcerpt)
-                        .font(.caption)
-                        .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        HStack(alignment: .top, spacing: 6) {
+            Button {
+                appState.selectHighlightedText(item)
+            } label: {
+                highlightSummary
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .background(item.id == appState.selectedAnnotationID ? InterfacePalette.selectedRowFill(for: colorScheme) : Color.clear)
+            .buttonStyle(.plain)
+            .help("Go to highlight on page \(item.pageLabel)")
+
+            Button(role: .destructive) {
+                appState.delete(item)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.caption2.weight(.semibold))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+            .help("Delete Highlight")
+            .accessibilityLabel("Delete Highlight")
+            .opacity(isRowHovered || item.id == appState.selectedAnnotationID ? 1 : 0.68)
         }
-        .buttonStyle(.plain)
-        .help("Go to highlight on page \(item.pageLabel)")
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .background(item.id == appState.selectedAnnotationID ? InterfacePalette.selectedRowFill(for: colorScheme) : Color.clear)
         .onHover { isHovered in
+            isRowHovered = isHovered
             appState.setCommentHover(item, isHovered: isHovered)
         }
+        .contextMenu {
+            Button(role: .destructive) {
+                appState.delete(item)
+            } label: {
+                Label("Delete Highlight", systemImage: "trash")
+            }
+        }
+    }
+
+    private var highlightSummary: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: item.id == appState.selectedAnnotationID ? "largecircle.fill.circle" : "circle")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(item.id == appState.selectedAnnotationID ? Color.accentColor : InterfacePalette.quietText(for: colorScheme))
+                .frame(width: 14, height: 18)
+
+            if showsColorSwatch {
+                Capsule()
+                    .fill(swatchColor)
+                    .frame(width: 20, height: 6)
+                    .overlay {
+                        Capsule()
+                            .stroke(InterfacePalette.hairline(for: colorScheme), lineWidth: 0.6)
+                    }
+                    .padding(.top, 6)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("p. \(item.pageLabel)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(InterfacePalette.secondaryText(for: colorScheme))
+
+                Text(item.highlightExcerpt)
+                    .font(.caption)
+                    .foregroundStyle(InterfacePalette.primaryText(for: colorScheme))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
@@ -1287,26 +1319,41 @@ private struct CommentReviewRowActions: View {
     let onDelete: () -> Void
 
     var body: some View {
-        Menu {
-            Button(role: .none, action: onEdit) {
-                Label("Edit", systemImage: "pencil")
-            }
-            Button(role: .none, action: onReply) {
+        HStack(spacing: 5) {
+            Button(action: onReply) {
                 Label("Reply", systemImage: "arrowshape.turn.up.left")
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .contentShape(Capsule())
             }
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
+            .buttonStyle(.plain)
+            .help("Reply")
+            .accessibilityLabel("Reply")
+
+            Menu {
+                Button(role: .none, action: onEdit) {
+                    Label("Edit", systemImage: "pencil")
+                }
+                Button(role: .none, action: onReply) {
+                    Label("Reply", systemImage: "arrowshape.turn.up.left")
+                }
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
             }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 18, height: 18)
-                .contentShape(Rectangle())
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .opacity(isVisible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.12), value: isVisible)
+            .help("More Actions")
+            .accessibilityLabel("More Actions")
         }
-        .menuStyle(.borderlessButton)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .opacity(isVisible ? 1 : 0)
-        .animation(.easeInOut(duration: 0.12), value: isVisible)
     }
 }

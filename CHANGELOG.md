@@ -17,6 +17,18 @@
 - Documented `https://www.akkolli.net/ihatepdfs` as the project website and `akshaykolli@hotmail.com` as the support contact.
 - Clarified that the project is vibe coded and maintained with AI agents, and that feature requests and agent-assisted PRs are welcome under the QA guidelines.
 
+## Version 0.4.0 (build 7) - 2026-06-30
+
+Build 7 keeps the public v0.4 app version and prepares another upload with targeted reader workflow fixes.
+
+### Fixed
+
+- Added an always-visible Reply button to comment and reply rows in the comments sidebar.
+- Made Escape leave active annotation modes, including highlighter mode and free-text placement.
+- Kept the macOS full-screen shortcut available after focus moves to window chrome.
+- Added annotation undo/redo for add and delete operations.
+- Added selected-annotation deletion and visible delete controls for plain highlights.
+
 ## Version 0.4.0 (build 6) - 2026-06-25
 
 Version 0.4 removes the experimental Fill & Sign, form-field navigation, and PDF signing implementation from the shipping app. The release is back to a small native reader and annotation tool while preserving the size target.

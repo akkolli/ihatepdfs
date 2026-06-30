@@ -6,7 +6,7 @@ import SwiftUI
 final class AcademicPDFView: PDFView {
     var onAnnotationClick: ((PDFAnnotation, PDFPage) -> Void)?
     var onPlacementClick: ((PDFPage, CGPoint) -> Void)?
-    var onCancelPlacement: (() -> Void)?
+    var onCancelActiveMode: (() -> Void)?
     var onSelectionComment: (() -> Void)?
     var onHighlighterSelection: (() -> Void)?
     var onToggleHighlighterKey: (() -> Void)?
@@ -14,6 +14,7 @@ final class AcademicPDFView: PDFView {
     var onCommentSelectionKey: (() -> Void)?
     var onPreviousPageKey: (() -> Void)?
     var onNextPageKey: (() -> Void)?
+    var onDeleteSelectedAnnotationKey: (() -> Void)?
     var placementTool: AnnotationPlacementTool? {
         didSet {
             guard oldValue != placementTool else { return }
@@ -118,8 +119,14 @@ final class AcademicPDFView: PDFView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53, placementTool != nil {
-            onCancelPlacement?()
+        if event.keyCode == 53, placementTool != nil || isHighlighterModeActive {
+            onCancelActiveMode?()
+            return
+        }
+
+        if [51, 117].contains(event.keyCode),
+           event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty {
+            onDeleteSelectedAnnotationKey?()
             return
         }
 
@@ -506,9 +513,9 @@ struct PDFKitRepresentedView: NSViewRepresentable {
                 appState.placePendingAnnotation(on: page, near: point)
             }
         }
-        view.onCancelPlacement = {
+        view.onCancelActiveMode = {
             Task { @MainActor in
-                appState.cancelPlacementTool()
+                appState.cancelActiveMode()
             }
         }
         view.onSelectionComment = {
@@ -544,6 +551,11 @@ struct PDFKitRepresentedView: NSViewRepresentable {
         view.onNextPageKey = {
             Task { @MainActor in
                 appState.goToNextPage()
+            }
+        }
+        view.onDeleteSelectedAnnotationKey = {
+            Task { @MainActor in
+                appState.deleteSelectedAnnotation()
             }
         }
         appState.attachPDFView(view)

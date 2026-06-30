@@ -246,6 +246,69 @@ final class AppStateWorkflowTests: XCTestCase {
         XCTAssertEqual(appState.saveHelpText, "Save PDF")
     }
 
+    func testCancelActiveModeClearsHighlighterAndPlacement() {
+        let appState = AppState()
+        appState.isHighlighterModeActive = true
+        appState.placementTool = .freeText
+
+        XCTAssertTrue(appState.canCancelActiveMode)
+        XCTAssertTrue(appState.cancelActiveMode())
+
+        XCTAssertFalse(appState.isHighlighterModeActive)
+        XCTAssertNil(appState.placementTool)
+        XCTAssertEqual(appState.statusMessage, "Free text placement canceled. Highlighter off.")
+        XCTAssertFalse(appState.canCancelActiveMode)
+    }
+
+    func testCancelActiveModeReturnsFalseWhenNoModeIsActive() {
+        let appState = AppState()
+
+        XCTAssertFalse(appState.canCancelActiveMode)
+        XCTAssertFalse(appState.cancelActiveMode())
+        XCTAssertEqual(appState.statusMessage, "Open a PDF to begin.")
+    }
+
+    func testDeleteSelectedHighlightCanUndoAndRedo() throws {
+        let url = try makeTemporaryPDF()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let window = NSWindow()
+        let appState = AppState()
+        appState.hostingWindow = window
+        appState.loadDocument(from: url)
+
+        let page = try XCTUnwrap(appState.document?.page(at: 0))
+        let highlight = PDFAnnotation(
+            bounds: CGRect(x: 72, y: 650, width: 180, height: 18),
+            forType: .highlight,
+            withProperties: nil
+        )
+        highlight.markupType = .highlight
+        page.addAnnotation(highlight)
+        appState.refreshAnnotations(on: [page])
+
+        let item = try XCTUnwrap(appState.annotations.first { $0.annotation === highlight })
+        appState.selectHighlightedText(item)
+        XCTAssertTrue(appState.canDeleteSelectedAnnotation)
+
+        appState.deleteSelectedAnnotation()
+
+        XCTAssertFalse(page.annotations.contains { $0 === highlight })
+        XCTAssertTrue(appState.annotations.isEmpty)
+        XCTAssertTrue(appState.canUndoAnnotationChange)
+
+        appState.undoAnnotationChange()
+
+        XCTAssertTrue(page.annotations.contains { $0 === highlight })
+        XCTAssertEqual(appState.annotations.count, 1)
+        XCTAssertTrue(appState.canRedoAnnotationChange)
+
+        appState.redoAnnotationChange()
+
+        XCTAssertFalse(page.annotations.contains { $0 === highlight })
+        XCTAssertTrue(appState.annotations.isEmpty)
+    }
+
     private func makeTemporaryPDF() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

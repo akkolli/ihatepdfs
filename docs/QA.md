@@ -16,21 +16,17 @@ Use this section as the source of truth when checking whether a feature matches 
 
 ## Latest v0.4 Automated QA Run
 
-Completed on 2026-06-29:
+Completed on 2026-06-30 for build 7:
 
-- `swift build`
 - `swift test`
+- `swift scripts/verify-pdf-annotations.swift`
+- `swift build -c release --product IHatePDFs`
+- `scripts/build-app.sh`
+- `BUILD_APP=0 scripts/make-dmg.sh`
+- `scripts/make-tiny-archives.sh`
+- `PKG_PATH=dist/nonexistent-appstore.pkg scripts/verify-release-artifacts.sh`
 
-Before release, also run:
-
-```sh
-swift scripts/verify-pdf-annotations.swift
-swift build -c release --product IHatePDFs
-scripts/build-app.sh
-scripts/make-dmg.sh
-scripts/make-tiny-archives.sh
-scripts/verify-release-artifacts.sh
-```
+Before App Store upload, also run `scripts/make-app-store-pkg.sh` with the required signing identities and provisioning profile, then verify the generated package with `scripts/verify-release-artifacts.sh`.
 
 ## Test Files
 

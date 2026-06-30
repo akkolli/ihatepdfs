@@ -60,6 +60,13 @@ enum AnnotationPlacementTool: Equatable {
     }
 }
 
+private struct AnnotationUndoRecord {
+    let annotation: PDFAnnotation
+    let page: PDFPage
+    let index: Int?
+    let popups: [PDFAnnotation]
+}
+
 private enum AppDefaults {
     static let documentPageProgress = "IHatePDFs.documentPageProgress.v1"
     static let documentBookmarks = "IHatePDFs.documentBookmarks.v1"
@@ -330,8 +337,26 @@ final class AppState: NSObject, ObservableObject {
             && !isHighlighterModeActive
     }
 
+    var canCancelActiveMode: Bool {
+        placementTool != nil || isHighlighterModeActive
+    }
+
     var canClearSearchQuery: Bool {
         !searchText.isEmpty || !searchResults.isEmpty
+    }
+
+    var canDeleteSelectedAnnotation: Bool {
+        activeEditor == nil
+            && selectedAnnotationID != nil
+            && annotations.contains { $0.id == selectedAnnotationID }
+    }
+
+    var canUndoAnnotationChange: Bool {
+        annotationUndoManager?.canUndo == true
+    }
+
+    var canRedoAnnotationChange: Bool {
+        annotationUndoManager?.canRedo == true
     }
 
     var searchSummaryText: String? {
@@ -376,6 +401,10 @@ final class AppState: NSObject, ObservableObject {
         let preferred = [ReviewState.notReviewed, ReviewState.reviewed].filter(values.contains)
         let custom = values.subtracting(preferred).sorted()
         return [ReviewState.allStatuses] + preferred + custom
+    }
+
+    private var annotationUndoManager: UndoManager? {
+        pdfView?.undoManager ?? hostingWindow?.undoManager
     }
 
     var currentPageBookmark: PDFDocumentBookmark? {
@@ -1065,6 +1094,25 @@ final class AppState: NSObject, ObservableObject {
         statusMessage = placementTool.cancellationMessage
     }
 
+    @discardableResult
+    func cancelActiveMode() -> Bool {
+        var messages: [String] = []
+
+        if let placementTool {
+            self.placementTool = nil
+            messages.append(placementTool.cancellationMessage)
+        }
+
+        if isHighlighterModeActive {
+            isHighlighterModeActive = false
+            messages.append("Highlighter off.")
+        }
+
+        guard !messages.isEmpty else { return false }
+        statusMessage = messages.joined(separator: " ")
+        return true
+    }
+
     func placePendingAnnotation(on page: PDFPage, near point: CGPoint) {
         guard let placementTool else { return }
 
@@ -1082,7 +1130,8 @@ final class AppState: NSObject, ObservableObject {
         }
 
         self.placementTool = nil
-        add(insertion)
+        let record = add(insertion)
+        registerUndoToRemoveAnnotations([record], actionName: "Add Free Text")
         refreshAnnotations(on: [page])
         openEditor(
             title: "Free Text",
@@ -1157,7 +1206,8 @@ final class AppState: NSObject, ObservableObject {
             author: author.isEmpty ? AnnotationFactory.defaultAuthor : author,
             parentID: parent.id
         )
-        add(insertion)
+        let record = add(insertion)
+        registerUndoToRemoveAnnotations([record], actionName: "Add Reply")
         clearSidebarReplyDraft()
         refreshAnnotations(on: [parent.page])
 
@@ -1205,17 +1255,20 @@ final class AppState: NSObject, ObservableObject {
         }
         let targetIDs = Set(targets.map(\.id))
         let targetPages = targets.map(\.page)
+        let actionName = deleteActionName(for: item, targetCount: targets.count)
 
         guard confirmDiscardSidebarReplyDraftIfNeeded(
             deleting: targetIDs,
-            actionName: targets.count > 1 ? "deleting this comment thread" : "deleting this comment"
+            actionName: deletingActionPhrase(for: item, targetCount: targets.count)
         ) else {
             return
         }
 
+        let records = annotationUndoRecords(for: targets)
         for target in targets {
             removeAnnotation(target.annotation, from: target.page)
         }
+        registerUndoToRestoreAnnotations(records, actionName: actionName)
 
         if selectedAnnotationID.map(targetIDs.contains) == true {
             selectedAnnotationID = nil
@@ -1227,7 +1280,27 @@ final class AppState: NSObject, ObservableObject {
 
         activeEditor = nil
         refreshAnnotations(on: targetPages)
-        statusMessage = targets.count > 1 ? "Comment thread deleted." : "Comment deleted."
+        statusMessage = deleteStatusMessage(for: item, targetCount: targets.count)
+    }
+
+    func deleteSelectedAnnotation() {
+        guard activeEditor == nil else { return }
+        guard let selectedAnnotationID,
+              let item = annotations.first(where: { $0.id == selectedAnnotationID })
+        else {
+            statusMessage = "Select an annotation before deleting."
+            return
+        }
+
+        delete(item)
+    }
+
+    func undoAnnotationChange() {
+        annotationUndoManager?.undo()
+    }
+
+    func redoAnnotationChange() {
+        annotationUndoManager?.redo()
     }
 
     func toggleReviewed(_ item: AnnotationSnapshot) {
@@ -1295,13 +1368,23 @@ final class AppState: NSObject, ObservableObject {
             }
         let targetIDs = Set(targets.map(\.id))
         let targetPages = targets.map(\.page)
+        let representative = targets.first ?? contextSnapshots.first
+        let actionName = representative.map {
+            deleteActionName(for: $0, targetCount: targets.isEmpty ? context.annotations.count : targets.count)
+        } ?? "Delete Annotation"
 
         guard confirmDiscardSidebarReplyDraftIfNeeded(
             deleting: targetIDs,
-            actionName: targets.count > 1 ? "deleting this comment thread" : "deleting this annotation"
+            actionName: representative.map {
+                deletingActionPhrase(for: $0, targetCount: targets.isEmpty ? context.annotations.count : targets.count)
+            } ?? "deleting this annotation"
         ) else {
             return
         }
+
+        let records = targets.isEmpty
+            ? annotationUndoRecords(for: context.annotations, pages: context.pages)
+            : annotationUndoRecords(for: targets)
 
         if targets.isEmpty {
             for (index, annotation) in context.annotations.enumerated() {
@@ -1313,6 +1396,7 @@ final class AppState: NSObject, ObservableObject {
                 removeAnnotation(target.annotation, from: target.page)
             }
         }
+        registerUndoToRestoreAnnotations(records, actionName: actionName)
 
         activeEditor = nil
         if targetIDs.isEmpty || selectedAnnotationID.map(targetIDs.contains) == true {
@@ -1326,7 +1410,9 @@ final class AppState: NSObject, ObservableObject {
         if context.isNewAnnotation {
             hasUnsavedChanges = context.hadUnsavedChangesBeforeCreation
         }
-        statusMessage = targets.count > 1 ? "Comment thread deleted." : "Annotation deleted."
+        statusMessage = representative.map {
+            deleteStatusMessage(for: $0, targetCount: targets.isEmpty ? context.annotations.count : targets.count)
+        } ?? "Annotation deleted."
     }
 
     func select(_ item: AnnotationSnapshot) {
@@ -1626,9 +1712,11 @@ final class AppState: NSObject, ObservableObject {
         }
 
         let hadUnsavedChangesBeforeCreation = hasUnsavedChanges
+        var records: [AnnotationUndoRecord] = []
         for insertion in insertions {
-            add(insertion)
+            records.append(add(insertion))
         }
+        registerUndoToRemoveAnnotations(records, actionName: addActionName(for: style))
         pdfView?.clearSelection()
         updateTextSelectionState()
         refreshAnnotations(on: insertions.map(\.page))
@@ -1654,7 +1742,8 @@ final class AppState: NSObject, ObservableObject {
         }
     }
 
-    private func add(_ insertion: AnnotationInsertion) {
+    @discardableResult
+    private func add(_ insertion: AnnotationInsertion) -> AnnotationUndoRecord {
         insertion.page.addAnnotation(insertion.annotation)
         if AnnotationKeys.isReply(insertion.annotation) {
             AnnotationFactory.hideReplyMarker(insertion.annotation, on: insertion.page)
@@ -1662,6 +1751,169 @@ final class AppState: NSObject, ObservableObject {
         detachPopupMarkerFromViewer(for: insertion.annotation, on: insertion.page)
         hasUnsavedChanges = true
         pdfView?.annotationsChanged(on: insertion.page)
+        return annotationUndoRecord(for: insertion.annotation, on: insertion.page)
+    }
+
+    private func registerUndoToRemoveAnnotations(
+        _ records: [AnnotationUndoRecord],
+        actionName: String
+    ) {
+        guard !records.isEmpty, let undoManager = annotationUndoManager else { return }
+
+        undoManager.registerUndo(withTarget: self) { target in
+            target.removeAnnotationsForUndo(records, actionName: actionName)
+        }
+        undoManager.setActionName(actionName)
+    }
+
+    private func registerUndoToRestoreAnnotations(
+        _ records: [AnnotationUndoRecord],
+        actionName: String
+    ) {
+        guard !records.isEmpty, let undoManager = annotationUndoManager else { return }
+
+        undoManager.registerUndo(withTarget: self) { target in
+            target.restoreAnnotationsForUndo(records, actionName: actionName)
+        }
+        undoManager.setActionName(actionName)
+    }
+
+    private func removeAnnotationsForUndo(
+        _ records: [AnnotationUndoRecord],
+        actionName: String
+    ) {
+        registerUndoToRestoreAnnotations(records, actionName: actionName)
+        clearStateForRemovedAnnotations(records.map(\.annotation))
+        for record in records {
+            removeAnnotation(record.annotation, from: record.page)
+        }
+        activeEditor = nil
+        refreshAnnotations(on: records.map(\.page))
+        statusMessage = "Annotation change undone."
+    }
+
+    private func restoreAnnotationsForUndo(
+        _ records: [AnnotationUndoRecord],
+        actionName: String
+    ) {
+        registerUndoToRemoveAnnotations(records, actionName: actionName)
+        for record in sortedUndoRecordsForRestore(records) {
+            restoreAnnotation(record)
+        }
+        activeEditor = nil
+        refreshAnnotations(on: records.map(\.page))
+        statusMessage = "Annotation change restored."
+    }
+
+    private func annotationUndoRecords(for targets: [AnnotationSnapshot]) -> [AnnotationUndoRecord] {
+        uniqueUndoRecords(targets.map { annotationUndoRecord(for: $0.annotation, on: $0.page) })
+    }
+
+    private func annotationUndoRecords(
+        for annotations: [PDFAnnotation],
+        pages: [PDFPage]
+    ) -> [AnnotationUndoRecord] {
+        let records = annotations.enumerated().compactMap { index, annotation -> AnnotationUndoRecord? in
+            guard index < pages.count else { return nil }
+            return annotationUndoRecord(for: annotation, on: pages[index])
+        }
+        return uniqueUndoRecords(records)
+    }
+
+    private func annotationUndoRecord(
+        for annotation: PDFAnnotation,
+        on page: PDFPage
+    ) -> AnnotationUndoRecord {
+        AnnotationUndoRecord(
+            annotation: annotation,
+            page: page,
+            index: page.annotations.firstIndex { $0 === annotation },
+            popups: linkedPopups(for: annotation, on: page)
+        )
+    }
+
+    private func uniqueUndoRecords(_ records: [AnnotationUndoRecord]) -> [AnnotationUndoRecord] {
+        var seen = Set<ObjectIdentifier>()
+        var result: [AnnotationUndoRecord] = []
+        for record in records {
+            let id = ObjectIdentifier(record.annotation)
+            guard seen.insert(id).inserted else { continue }
+            result.append(record)
+        }
+        return result
+    }
+
+    private func sortedUndoRecordsForRestore(_ records: [AnnotationUndoRecord]) -> [AnnotationUndoRecord] {
+        records.sorted { left, right in
+            switch (left.index, right.index) {
+            case let (leftIndex?, rightIndex?):
+                return leftIndex < rightIndex
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                return false
+            }
+        }
+    }
+
+    private func restoreAnnotation(_ record: AnnotationUndoRecord) {
+        if record.annotation.page !== record.page {
+            record.page.addAnnotation(record.annotation)
+        }
+
+        for popup in record.popups where popup.page == nil {
+            record.page.addAnnotation(popup)
+        }
+
+        moveAnnotation(record.annotation, on: record.page, to: record.index)
+        detachPopupMarkerFromViewer(for: record.annotation, on: record.page)
+        hasUnsavedChanges = true
+        pdfView?.annotationsChanged(on: record.page)
+    }
+
+    private func moveAnnotation(_ annotation: PDFAnnotation, on page: PDFPage, to index: Int?) {
+        guard let index,
+              index >= 0,
+              index < page.annotations.count - 1
+        else {
+            return
+        }
+
+        let tail = page.annotations.dropFirst(index).filter { $0 !== annotation }
+        for annotation in tail {
+            page.removeAnnotation(annotation)
+        }
+        for annotation in tail {
+            page.addAnnotation(annotation)
+        }
+    }
+
+    private func clearStateForRemovedAnnotations(_ removedAnnotations: [PDFAnnotation]) {
+        let removed = Set(removedAnnotations.map(ObjectIdentifier.init))
+        let removedIDs = Set(annotations.compactMap { snapshot in
+            removed.contains(ObjectIdentifier(snapshot.annotation)) ? snapshot.id : nil
+        })
+
+        if selectedAnnotationID.map(removedIDs.contains) == true {
+            selectedAnnotationID = nil
+        }
+        if hoveredAnnotationID.map(removedIDs.contains) == true {
+            hoveredAnnotationID = nil
+        }
+        clearSidebarReplyDraftIfNeeded(deleting: removedIDs)
+    }
+
+    private func addActionName(for style: MarkupAnnotationStyle) -> String {
+        switch style {
+        case .highlight:
+            return "Add Highlight"
+        case .comment:
+            return "Add Comment"
+        case .underline:
+            return "Add Underline Comment"
+        }
     }
 
     private func updateTextSelectionState() {
@@ -1768,22 +2020,69 @@ final class AppState: NSObject, ObservableObject {
         return true
     }
 
-    private func removeAnnotation(_ annotation: PDFAnnotation, from page: PDFPage) {
-        let linkedPopups = page.annotations.filter { candidate in
-            guard AnnotationKeys.annotation(candidate, hasSubtype: .popup) else { return false }
-            return candidate === annotation.popup || AnnotationFactory.parentAnnotation(for: candidate) === annotation
+    private func deleteActionName(for item: AnnotationSnapshot, targetCount: Int) -> String {
+        "Delete \(deleteNounTitle(for: item, targetCount: targetCount))"
+    }
+
+    private func deletingActionPhrase(for item: AnnotationSnapshot, targetCount: Int) -> String {
+        "deleting this \(deleteNounSentence(for: item, targetCount: targetCount))"
+    }
+
+    private func deleteStatusMessage(for item: AnnotationSnapshot, targetCount: Int) -> String {
+        "\(deleteNounTitle(for: item, targetCount: targetCount)) deleted."
+    }
+
+    private func deleteNounTitle(for item: AnnotationSnapshot, targetCount: Int) -> String {
+        if targetCount > 1 {
+            return "Comment Thread"
         }
 
-        for popup in linkedPopups {
-            page.removeAnnotation(popup)
+        switch item.kind {
+        case .comment:
+            return "Comment"
+        case .highlight:
+            return "Highlight"
+        case .underline:
+            return "Underline Comment"
+        case .note:
+            return "Note"
+        case .freeText:
+            return "Free Text"
+        case .reply:
+            return "Reply"
+        case .other:
+            return "Annotation"
         }
-        if let popup = annotation.popup, popup.page != nil {
+    }
+
+    private func deleteNounSentence(for item: AnnotationSnapshot, targetCount: Int) -> String {
+        deleteNounTitle(for: item, targetCount: targetCount).lowercased()
+    }
+
+    private func removeAnnotation(_ annotation: PDFAnnotation, from page: PDFPage) {
+        for popup in linkedPopups(for: annotation, on: page) {
             page.removeAnnotation(popup)
         }
 
         page.removeAnnotation(annotation)
         hasUnsavedChanges = true
         pdfView?.annotationsChanged(on: page)
+    }
+
+    private func linkedPopups(for annotation: PDFAnnotation, on page: PDFPage) -> [PDFAnnotation] {
+        var seen = Set<ObjectIdentifier>()
+        var popups = page.annotations.filter { candidate in
+            guard AnnotationKeys.annotation(candidate, hasSubtype: .popup) else { return false }
+            return candidate === annotation.popup || AnnotationFactory.parentAnnotation(for: candidate) === annotation
+        }
+
+        if let popup = annotation.popup {
+            popups.append(popup)
+        }
+
+        return popups.filter { popup in
+            seen.insert(ObjectIdentifier(popup)).inserted
+        }
     }
 
     private func openEditor(
